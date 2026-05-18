@@ -4925,11 +4925,20 @@ run(function()
 		return (workspace:GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp) >= placeCooldown
 	end
 	
-	local function getYOffset()
+	local function getDownwardExtra()
 		if Downwards.Enabled and inputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-			return 4.5
+			return 3
 		end
-		return 1.5
+		return 0
+	end
+	
+	local function getUnderFootWorld(root, hum)
+		return roundPos(root.Position - Vector3.new(0, hum.HipHeight + (root.Size.Y / 2) + 1.5 + getDownwardExtra(), 0))
+	end
+	
+	local function getColumnGrid(root, hum)
+		local foot = getUnderFootWorld(root, hum)
+		return bedwars.BlockController:getBlockPosition(Vector3.new(root.Position.X, foot.Y, root.Position.Z))
 	end
 	
 	local function isEmptyAt(worldPos, blockStore)
@@ -4948,7 +4957,18 @@ run(function()
 		return false
 	end
 	
-	local function findProximityPosition(pos, blockStore)
+	local function positionScore(target, origin, root, moveDir)
+		local dist = ((target - origin) * Vector3.new(1, 0, 1)).Magnitude
+		if moveDir.Magnitude > 0.01 then
+			local rel = ((target - root.Position) * Vector3.new(1, 0, 1))
+			if rel.Magnitude > 0.01 and rel.Unit:Dot(moveDir.Unit) < -0.25 then
+				dist += 100
+			end
+		end
+		return dist
+	end
+	
+	local function findProximityPosition(pos, blockStore, root, moveDir)
 		local originGrid = bedwars.BlockController:getBlockPosition(pos)
 		local bestDist, bestPos = 60
 		for radius = 1, 3 do
@@ -4965,7 +4985,7 @@ run(function()
 							for _, offset in neighborWorld do
 								local target = anchor + offset
 								if isEmptyAt(target, blockStore) then
-									local dist = (target - pos).Magnitude
+									local dist = positionScore(target, pos, root, moveDir)
 									if dist < bestDist then
 										bestDist, bestPos = dist, target
 									end
@@ -4982,7 +5002,7 @@ run(function()
 		return nil
 	end
 	
-	local function resolvePlacement(worldPos, blockStore)
+	local function resolvePlacement(worldPos, blockStore, root, moveDir)
 		if not isEmptyAt(worldPos, blockStore) then
 			return nil
 		end
@@ -4995,7 +5015,7 @@ run(function()
 			for _, offset in neighborWorld do
 				local target = anchor + offset
 				if isEmptyAt(target, blockStore) then
-					local dist = (target - worldPos).Magnitude
+					local dist = positionScore(target, worldPos, root, moveDir)
 					if dist < bestDist then
 						bestDist, bestPos = dist, target
 					end
@@ -5005,7 +5025,7 @@ run(function()
 				return bestPos
 			end
 		end
-		return findProximityPosition(worldPos, blockStore)
+		return findProximityPosition(worldPos, blockStore, root, moveDir)
 	end
 	
 	local function applyDiagonalSnap(currentpos, root, hum)
@@ -5029,46 +5049,64 @@ run(function()
 		end
 	end
 	
-	local function getFootPosition(root, hum)
-		return root.Position - Vector3.new(0, hum.HipHeight + (root.Size.Y / 2), 0)
+	local function getColumnTopGrid(columnGrid, blockStore)
+		local topGrid
+		for y = -6, 12 do
+			local grid = columnGrid + Vector3.new(0, y, 0)
+			if blockStore:getBlockAt(grid) then
+				topGrid = grid
+			end
+		end
+		return topGrid
 	end
 
 	local function resolveTowerPlacement(root, hum, blockStore)
-		local footGrid = bedwars.BlockController:getBlockPosition(getFootPosition(root, hum))
-		for y = -1, 7 do
-			local grid = footGrid + Vector3.new(0, y, 0)
-			if not blockStore:getBlockAt(grid) then
-				if blockStore:getBlockAt(grid - Vector3.new(0, 1, 0)) then
-					lastSupportGrid = grid - Vector3.new(0, 1, 0)
-					return grid * 3
-				end
-				for _, offset in neighborGrid do
-					if blockStore:getBlockAt(grid + offset) then
-						lastSupportGrid = grid + offset
-						return grid * 3
-					end
-				end
+		local columnGrid = getColumnGrid(root, hum)
+		local topGrid = getColumnTopGrid(columnGrid, blockStore)
+		if topGrid then
+			local placeGrid = topGrid + Vector3.new(0, 1, 0)
+			if not blockStore:getBlockAt(placeGrid) then
+				lastSupportGrid = topGrid
+				return placeGrid * 3
 			end
 		end
-		return findProximityPosition(footGrid * 3, blockStore)
+		for y = -1, 3 do
+			local grid = columnGrid + Vector3.new(0, y, 0)
+			if not blockStore:getBlockAt(grid) and blockStore:getBlockAt(grid - Vector3.new(0, 1, 0)) then
+				lastSupportGrid = grid - Vector3.new(0, 1, 0)
+				return grid * 3
+			end
+		end
+		return findProximityPosition(getUnderFootWorld(root, hum), blockStore, root, Vector3.zero)
 	end
 
-	local function buildCandidates(base, moveDir, inAir, root, hum)
+	local function stepOntoTower(root, hum, placeWorld)
+		local standY = placeWorld.Y + 1.5 + hum.HipHeight + (root.Size.Y / 2)
+		if root.Position.Y >= standY - 0.35 then
+			return
+		end
+		local look = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+		if look.Magnitude < 0.01 then
+			look = Vector3.new(0, 0, -1)
+		end
+		root.CFrame = CFrame.lookAlong(Vector3.new(root.Position.X, standY, root.Position.Z), look)
+	end
+
+	local function buildCandidates(root, hum, inAir)
 		local candidates, seen = {}, {}
-		local feet = roundPos(base)
+		local feet = getUnderFootWorld(root, hum)
+		local moveDir = hum.MoveDirection * Vector3.new(1, 0, 1)
+		addCandidate(candidates, seen, feet)
+		if inAir then
+			addCandidate(candidates, seen, roundPos(feet - Vector3.new(0, 3, 0)))
+		end
 		if moveDir.Magnitude > 0.01 then
 			moveDir = moveDir.Unit
-			addCandidate(candidates, seen, feet)
-			if inAir then
-				addCandidate(candidates, seen, roundPos(base - Vector3.new(0, 3, 0)))
-			end
 			for i = 1, Expand.Value do
-				local currentpos = applyDiagonalSnap(roundPos(base + moveDir * (i * 3)), root, hum)
-				addCandidate(candidates, seen, currentpos)
-				lastpos = currentpos
+				local ahead = roundPos(Vector3.new(feet.X + moveDir.X * (i * 3), feet.Y, feet.Z + moveDir.Z * (i * 3)))
+				addCandidate(candidates, seen, applyDiagonalSnap(ahead, root, hum))
+				lastpos = ahead
 			end
-		else
-			addCandidate(candidates, seen, feet)
 		end
 		return candidates
 	end
@@ -5116,12 +5154,8 @@ run(function()
 						label.TextColor3 = Color3.fromHSV((amount / 128) / 2.8, 0.86, 1)
 					end
 	
-					local root = entitylib.character.RootPart
-					local hum = entitylib.character.Humanoid
 					local tower = Tower.Enabled and inputService:IsKeyDown(Enum.KeyCode.Space) and not inputService:GetFocusedTextBox()
-
 					if tower then
-						hum.Jump = true
 						return
 					end
 
@@ -5129,12 +5163,14 @@ run(function()
 						return
 					end
 
+					local root = entitylib.character.RootPart
+					local hum = entitylib.character.Humanoid
 					local blockStore = bedwars.BlockController:getStore()
-					local base = root.Position - Vector3.new(0, entitylib.character.HipHeight + getYOffset(), 0)
-					local candidates = buildCandidates(base, hum.MoveDirection, hum.FloorMaterial == Enum.Material.Air, root, hum)
+					local moveDir = hum.MoveDirection * Vector3.new(1, 0, 1)
+					local candidates = buildCandidates(root, hum, hum.FloorMaterial == Enum.Material.Air)
 
 					for _, currentpos in candidates do
-						local placePos = resolvePlacement(currentpos, blockStore)
+						local placePos = resolvePlacement(currentpos, blockStore, root, moveDir)
 						if placePos then
 							bedwars.placeBlock(placePos, wool)
 							break
@@ -5153,9 +5189,11 @@ run(function()
 							if wool and canPlaceBlock() then
 								local root = entitylib.character.RootPart
 								local hum = entitylib.character.Humanoid
-								local placePos = resolveTowerPlacement(root, hum, bedwars.BlockController:getStore())
+								local blockStore = bedwars.BlockController:getStore()
+								local placePos = resolveTowerPlacement(root, hum, blockStore)
 								if placePos then
 									bedwars.placeBlock(placePos, wool)
+									task.defer(stepOntoTower, root, hum, placePos)
 								end
 							end
 							local elapsed = workspace:GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp
