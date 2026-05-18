@@ -5029,12 +5029,33 @@ run(function()
 		end
 	end
 	
-	local function buildCandidates(base, moveDir, tower, inAir, root, hum)
+	local function getFootPosition(root, hum)
+		return root.Position - Vector3.new(0, hum.HipHeight + (root.Size.Y / 2), 0)
+	end
+
+	local function resolveTowerPlacement(root, hum, blockStore)
+		local footGrid = bedwars.BlockController:getBlockPosition(getFootPosition(root, hum))
+		for y = -1, 7 do
+			local grid = footGrid + Vector3.new(0, y, 0)
+			if not blockStore:getBlockAt(grid) then
+				if blockStore:getBlockAt(grid - Vector3.new(0, 1, 0)) then
+					lastSupportGrid = grid - Vector3.new(0, 1, 0)
+					return grid * 3
+				end
+				for _, offset in neighborGrid do
+					if blockStore:getBlockAt(grid + offset) then
+						lastSupportGrid = grid + offset
+						return grid * 3
+					end
+				end
+			end
+		end
+		return findProximityPosition(footGrid * 3, blockStore)
+	end
+
+	local function buildCandidates(base, moveDir, inAir, root, hum)
 		local candidates, seen = {}, {}
 		local feet = roundPos(base)
-		if tower then
-			addCandidate(candidates, seen, feet)
-		end
 		if moveDir.Magnitude > 0.01 then
 			moveDir = moveDir.Unit
 			addCandidate(candidates, seen, feet)
@@ -5046,7 +5067,7 @@ run(function()
 				addCandidate(candidates, seen, currentpos)
 				lastpos = currentpos
 			end
-		elseif not tower then
+		else
 			addCandidate(candidates, seen, feet)
 		end
 		return candidates
@@ -5095,26 +5116,52 @@ run(function()
 						label.TextColor3 = Color3.fromHSV((amount / 128) / 2.8, 0.86, 1)
 					end
 	
+					local root = entitylib.character.RootPart
+					local hum = entitylib.character.Humanoid
+					local tower = Tower.Enabled and inputService:IsKeyDown(Enum.KeyCode.Space) and not inputService:GetFocusedTextBox()
+
+					if tower then
+						hum.Jump = true
+						return
+					end
+
 					if not wool or not canPlaceBlock() then
 						return
 					end
-	
-					local root = entitylib.character.RootPart
-					local hum = entitylib.character.Humanoid
+
 					local blockStore = bedwars.BlockController:getStore()
 					local base = root.Position - Vector3.new(0, entitylib.character.HipHeight + getYOffset(), 0)
-					local tower = Tower.Enabled and inputService:IsKeyDown(Enum.KeyCode.Space) and not inputService:GetFocusedTextBox()
-					local inAir = hum.FloorMaterial == Enum.Material.Air
-					local candidates = buildCandidates(base, hum.MoveDirection, tower, inAir, root, hum)
-	
+					local candidates = buildCandidates(base, hum.MoveDirection, hum.FloorMaterial == Enum.Material.Air, root, hum)
+
 					for _, currentpos in candidates do
 						local placePos = resolvePlacement(currentpos, blockStore)
 						if placePos then
-							task.spawn(bedwars.placeBlock, placePos, wool)
-							if tower and inAir then
-								hum.Jump = true
-							end
+							bedwars.placeBlock(placePos, wool)
 							break
+						end
+					end
+				end))
+
+				Scaffold:Clean(task.spawn(function()
+					while Scaffold.Enabled do
+						local tower = Tower.Enabled and inputService:IsKeyDown(Enum.KeyCode.Space) and not inputService:GetFocusedTextBox()
+						if tower and entitylib.isAlive then
+							local wool = getScaffoldBlock()
+							if Mouse.Enabled and not inputService:IsMouseButtonPressed(0) then
+								wool = nil
+							end
+							if wool and canPlaceBlock() then
+								local root = entitylib.character.RootPart
+								local hum = entitylib.character.Humanoid
+								local placePos = resolveTowerPlacement(root, hum, bedwars.BlockController:getStore())
+								if placePos then
+									bedwars.placeBlock(placePos, wool)
+								end
+							end
+							local elapsed = workspace:GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp
+							task.wait(math.max(placeCooldown - elapsed, 1 / 240))
+						else
+							task.wait()
 						end
 					end
 				end))
