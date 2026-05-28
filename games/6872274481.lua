@@ -1353,13 +1353,13 @@ run(function()
 	local CPS
 	local BlockCPS = {}
 	local Thread
-	
+
 	local function AutoClick()
 		if Thread then
 			task.cancel(Thread)
 		end
-	
-		Thread = task.delay(1 / 7, function()
+
+		Thread = task.spawn(function()
 			repeat
 				if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
 					local blockPlacer = bedwars.BlockPlacementController.blockPlacer
@@ -1374,12 +1374,12 @@ run(function()
 						bedwars.SwordController:swingSwordAtMouse(0.39)
 					end
 				end
-	
+
 				task.wait(1 / (store.hand.toolType == 'block' and BlockCPS or CPS).GetRandomValue())
 			until not AutoClicker.Enabled
 		end)
 	end
-	
+
 	AutoClicker = vape.Categories.Combat:CreateModule({
 		Name = 'AutoClicker',
 		Function = function(callback)
@@ -1389,14 +1389,14 @@ run(function()
 						AutoClick()
 					end
 				end))
-	
+
 				AutoClicker:Clean(inputService.InputEnded:Connect(function(input)
 					if input.UserInputType == Enum.UserInputType.MouseButton1 and Thread then
 						task.cancel(Thread)
 						Thread = nil
 					end
 				end))
-	
+
 				if inputService.TouchEnabled then
 					pcall(function()
 						AutoClicker:Clean(lplr.PlayerGui.MobileUI['2'].MouseButton1Down:Connect(AutoClick))
