@@ -7511,11 +7511,12 @@ run(function()
 	local LimitItem
 	local customlist, parts = {}, {}
 	
-	-- Manual override targeting states
-	local manualTargetBlock = nil
+	-- Path continuation variables
+	local targetBlockPosition = nil -- Stores the Vector3 position of the desired target
+	local currentPathTarget = nil   -- Stores the actual block we are mining right now to get to targetBlockPosition
 	local lastHeldTool = nil
 
-	-- Hook mouse clicks to capture manual targets for beds/ores/defense blocks
+	-- Hook mouse clicks to capture the ultimate destination
 	local UIS = game:GetService("UserInputService")
 	UIS.InputBegan:Connect(function(input, gpe)
 		if gpe or not Breaker.Enabled then return end
@@ -7524,19 +7525,20 @@ run(function()
 			local raycastResult = workspace:Raycast(ray.Origin, ray.Direction * 1000)
 			if raycastResult and raycastResult.Instance then
 				local blockInstance = raycastResult.Instance
-				-- Check if it belongs to something tracked
 				local isBed = blockInstance:GetAttribute("Bed") or blockInstance.Name:lower():find("bed")
 				local isOre = blockInstance.Name:lower():find("ore")
 				local isAnyBlock = bedwars.BlockController:isBlockBreakable({blockPosition = blockInstance.Position / 3}, lplr)
 				
 				if isBed or isOre or isAnyBlock then
-					manualTargetBlock = blockInstance
+					-- Track the target position and reset the active path block so it recalculates
+					targetBlockPosition = blockInstance.Position
+					currentPathTarget = nil 
 				end
 			end
 		end
 	end)
 
-	-- AutoTool Integration: Function to find and switch to the correct tool
+	-- AutoTool Integration
 	local function switchHotbarItem(block)
 		if block and not block:GetAttribute('NoBreak') and not block:GetAttribute('Team'..(lplr:GetAttribute('Team') or 0)..'NoBreak') then
 			local toolMeta = bedwars.ItemMeta[block.Name]
@@ -7670,20 +7672,41 @@ run(function()
 				if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
 				if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
 				
-				-- REQUIRE CLICK IF: LimitItem is active AND it's a Bed/Ore AND it wasn't the targeted block instance
+				-- If LimitItem is ON and it's a bed/ore, force click-to-target tracking rules
 				if LimitItem.Enabled and isBedOrOre then
-					if not manualTargetBlock or (manualTargetBlock and manualTargetBlock ~= v) then
-						continue
+					if not targetBlockPosition then 
+						continue 
+					end
+
+					-- If we don't have an active block in the path chain yet, look for one that matches our end destination target
+					if not currentPathTarget then
+						if (v.Position - targetBlockPosition).Magnitude > 9 then -- Check proximity to the click destination
+							continue
+						end
+					else
+						-- Ensure we only mine the current block required by our path sequence
+						if v ~= currentPathTarget then
+							continue
+						end
 					end
 				end
 
-				-- AutoTool integration check
+				-- AutoTool integration
 				switchHotbarItem(v)
 
 				if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
 	
 				hit += 1
 				local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, InstantBreak.Enabled)
+				
+				-- PATH LOGIC UPDATE:
+				-- Update currentPathTarget to the next sequential block required to clear a path to the goal
+				if path and target then
+					currentPathTarget = target
+				else
+					currentPathTarget = nil
+				end
+
 				if path then
 					local currentnode = target
 					for _, part in parts do
@@ -7696,11 +7719,9 @@ run(function()
 				end
 	
 				task.wait(InstantBreak.Enabled and (store.damageBlockFail > tick() and 4.5 or 0) or BreakSpeed.Value)
-	
 				return true
 			end
 		end
-	
 		return false
 	end
 	
@@ -7738,13 +7759,12 @@ run(function()
 					task.wait(1 / UpdateRate.Value)
 					if not Breaker.Enabled then break end
 					
-					-- TOOL SWITCH MONITORING
-					-- If you swap from a tool back to a weapon/item, clear our queue so you don't accidentally auto-mine
+					-- Reset targets if item swaps to something that isn't a break tool
 					local currentTool = store.hand.tool and store.hand.tool.Name or nil
 					if currentTool ~= lastHeldTool then
 						if lastHeldTool and store.tools and not store.tools[bedwars.ItemMeta[lastHeldTool].block.breakType] then
-							-- Reset targets because user switched items
-							manualTargetBlock = nil
+							targetBlockPosition = nil
+							currentPathTarget = nil
 						end
 						lastHeldTool = currentTool
 					end
@@ -7752,7 +7772,6 @@ run(function()
 					if entitylib.isAlive then
 						local localPosition = entitylib.character.RootPart.Position
 	
-						-- Process Bed Break logic (Flags true for Bed/Ore filtering conditions)
 						if attemptBreak(Bed.Enabled and beds, localPosition, true) then continue end
 						if attemptBreak(customlist, localPosition, false) then continue end
 						if attemptBreak(LuckyBlock.Enabled and luckyblock, localPosition, false) then continue end
@@ -7769,7 +7788,8 @@ run(function()
 					v:Destroy()
 				end
 				table.clear(parts)
-				manualTargetBlock = nil
+				targetBlockPosition = nil
+				currentPathTarget = nil
 				lastHeldTool = nil
 			end
 		end,
