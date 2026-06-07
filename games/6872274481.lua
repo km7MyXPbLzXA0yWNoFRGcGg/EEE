@@ -7511,6 +7511,31 @@ run(function()
 	local LimitItem
 	local customlist, parts = {}, {}
 	
+	-- Manual override targeting states
+	local manualTargetBlock = nil
+	local lastHeldTool = nil
+
+	-- Hook mouse clicks to capture manual targets for beds/ores/defense blocks
+	local UIS = game:GetService("UserInputService")
+	UIS.InputBegan:Connect(function(input, gpe)
+		if gpe or not Breaker.Enabled then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local ray = gameCamera:ScreenPointToRay(input.Position.X, input.Position.Y)
+			local raycastResult = workspace:Raycast(ray.Origin, ray.Direction * 1000)
+			if raycastResult and raycastResult.Instance then
+				local blockInstance = raycastResult.Instance
+				-- Check if it belongs to something tracked
+				local isBed = blockInstance:GetAttribute("Bed") or blockInstance.Name:lower():find("bed")
+				local isOre = blockInstance.Name:lower():find("ore")
+				local isAnyBlock = bedwars.BlockController:isBlockBreakable({blockPosition = blockInstance.Position / 3}, lplr)
+				
+				if isBed or isOre or isAnyBlock then
+					manualTargetBlock = blockInstance
+				end
+			end
+		end
+	end)
+
 	-- AutoTool Integration: Function to find and switch to the correct tool
 	local function switchHotbarItem(block)
 		if block and not block:GetAttribute('NoBreak') and not block:GetAttribute('Team'..(lplr:GetAttribute('Team') or 0)..'NoBreak') then
@@ -7638,14 +7663,21 @@ run(function()
 	
 	local hit = 0
 	
-	local function attemptBreak(tab, localPosition)
+	local function attemptBreak(tab, localPosition, isBedOrOre)
 		if not tab then return end
 		for _, v in tab do
 			if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
 				if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
 				if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
 				
-				-- AutoTool integration check: dynamically switch hotbar slot right before checking item restrictions
+				-- REQUIRE CLICK IF: LimitItem is active AND it's a Bed/Ore AND it wasn't the targeted block instance
+				if LimitItem.Enabled and isBedOrOre then
+					if not manualTargetBlock or (manualTargetBlock and manualTargetBlock ~= v) then
+						continue
+					end
+				end
+
+				-- AutoTool integration check
 				switchHotbarItem(v)
 
 				if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
@@ -7705,13 +7737,26 @@ run(function()
 				repeat
 					task.wait(1 / UpdateRate.Value)
 					if not Breaker.Enabled then break end
+					
+					-- TOOL SWITCH MONITORING
+					-- If you swap from a tool back to a weapon/item, clear our queue so you don't accidentally auto-mine
+					local currentTool = store.hand.tool and store.hand.tool.Name or nil
+					if currentTool ~= lastHeldTool then
+						if lastHeldTool and store.tools and not store.tools[bedwars.ItemMeta[lastHeldTool].block.breakType] then
+							-- Reset targets because user switched items
+							manualTargetBlock = nil
+						end
+						lastHeldTool = currentTool
+					end
+
 					if entitylib.isAlive then
 						local localPosition = entitylib.character.RootPart.Position
 	
-						if attemptBreak(Bed.Enabled and beds, localPosition) then continue end
-						if attemptBreak(customlist, localPosition) then continue end
-						if attemptBreak(LuckyBlock.Enabled and luckyblock, localPosition) then continue end
-						if attemptBreak(IronOre.Enabled and ironores, localPosition) then continue end
+						-- Process Bed Break logic (Flags true for Bed/Ore filtering conditions)
+						if attemptBreak(Bed.Enabled and beds, localPosition, true) then continue end
+						if attemptBreak(customlist, localPosition, false) then continue end
+						if attemptBreak(LuckyBlock.Enabled and luckyblock, localPosition, false) then continue end
+						if attemptBreak(IronOre.Enabled and ironores, localPosition, true) then continue end
 	
 						for _, v in parts do
 							v.Position = Vector3.zero
@@ -7724,6 +7769,8 @@ run(function()
 					v:Destroy()
 				end
 				table.clear(parts)
+				manualTargetBlock = nil
+				lastHeldTool = nil
 			end
 		end,
 		Tooltip = 'Break blocks around you automatically'
