@@ -7494,7 +7494,7 @@ run(function()
 	})
 end)
 	
-run(run(function()
+run(function()
 	local Breaker
 	local Range
 	local BreakSpeed
