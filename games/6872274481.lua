@@ -2862,62 +2862,22 @@ run(function()
 end)
 	
 run(function()
-    local Prediction
-    local AutoCharge
     local TargetPart
     local Targets
     local FOV
-    local Sort
     local OtherProjectiles
-    local Blacklist
+    local Blacklist -- Added local variable for Blacklist
     local rayCheck = RaycastParams.new()
     rayCheck.FilterType = Enum.RaycastFilterType.Include
     rayCheck.FilterDescendantsInstances = {workspace:FindFirstChild('Map')}
-    local launchHook, oldd
+    local old
     
-    local function getMousePosition()
-        if inputService.TouchEnabled then
-            return gameCamera.ViewportSize / 2
-        end
-        return inputService.GetMouseLocation(inputService)
-    end
-    
-    local function getPosition(ent, proj)
-        if TargetPart.Value == 'Closest' then
-            local localPosition, magnitude, part = getMousePosition(), 9e9, nil
-            for _, v in ent:GetChildren() do
-                if pcall(function() return v.Position; end) then
-                    local position, vis = gameCamera.WorldToViewportPoint(gameCamera, v.Position)
-    
-                    if vis then
-                        local mag = (localPosition - Vector2.new(position.x, position.y)).Magnitude
-    
-                        if mag < magnitude then
-                            magnitude = mag
-                            part = v
-                        end
-                    end
-                end
-            end
-            return part and part.Position or ent.PrimaryPart.Position
-        elseif TargetPart.Value == 'Dynamic' then
-            local tool = store.hand.tool
-            if tool and tool.Name:find('headhunter') then
-                return ent.Head.Position
-            end
-            return ent.PrimaryPart.Position
-        end
-        return
-    end
-    
-    local ProjectileAimbot
-    ProjectileAimbot = vape.Categories.Blatant:CreateModule({
-        Name = 'Projectile Aimbot',
-        Disabled = not canDebug,
+    local ProjectileAimbot = vape.Categories.Blatant:CreateModule({
+        Name = 'ProjectileAimbot',
         Function = function(callback)
             if callback then
-                oldd = bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition
-                launchHook = bedwars.ProjectileLaunchHook:Add('ProjectileAimbot', 100, function(nextLaunch, ...)
+                old = bedwars.ProjectileController.calculateImportantLaunchValues
+                bedwars.ProjectileController.calculateImportantLaunchValues = function(...)
                     local self, projmeta, worldmeta, origin, shootpos = ...
                     local plr = entitylib.EntityMouse({
                         Part = 'RootPart',
@@ -2925,23 +2885,22 @@ run(function()
                         Players = Targets.Players.Enabled,
                         NPCs = Targets.NPCs.Enabled,
                         Wallcheck = Targets.Walls.Enabled,
-                        Sort = sortmethods[Sort.Value or 'Distance'],
-                        Origin = entitylib.isAlive and (shootpos or entitylib.character.RootPart.Position) or Vector3.zero,
+                        Origin = entitylib.isAlive and (shootpos or entitylib.character.RootPart.Position) or Vector3.zero
                     })
     
                     if plr then
                         local pos = shootpos or self:getLaunchPosition(origin)
                         if not pos then
-                            return nextLaunch(...)
+                            return old(...)
                         end
     
                         if (not OtherProjectiles.Enabled) and not projmeta.projectile:find('arrow') then
-                            return nextLaunch(...)
+                            return old(...)
                         end
-    
+
                         -- Core Blacklist Verification Check
                         if table.find(Blacklist.ListEnabled or {}, ((projmeta.projectile == 'glue_trap' or projmeta.projectile == 'glue_projectile') and 'gloop' or projmeta.projectile)) then
-                            return nextLaunch(...)
+                            return old(...)
                         end
     
                         local meta = projmeta:getProjectileMeta()
@@ -2953,14 +2912,14 @@ run(function()
                         local playerGravity = workspace.Gravity
     
                         if balloons and balloons > 0 then
-                            playerGravity = (workspace.Gravity * (1 - (balloons >= 4 and 1.2 or balloons >= 3 and 1 or 0.975)))
+                            playerGravity = (workspace.Gravity * (1 - ((balloons >= 4 and 1.2 or balloons >= 3 and 1 or 0.975))))
                         end
     
                         if plr.Character.PrimaryPart:FindFirstChild('rbxassetid://8200754399') then
                             playerGravity = 6
                         end
     
-                        if plr.Player and plr.Player:GetAttribute('IsOwlTarget') then
+                        if plr.Player:GetAttribute('IsOwlTarget') then
                             for _, owl in collectionService:GetTagged('Owl') do
                                 if owl:GetAttribute('Target') == plr.Player.UserId and owl:GetAttribute('Status') == 2 then
                                     playerGravity = 0
@@ -2968,118 +2927,47 @@ run(function()
                             end
                         end
     
-                        local targetpos = getPosition(plr.Character) or plr[TargetPart.Value].Position
-                        local newlook = CFrame.new(offsetpos, targetpos) * CFrame.new(projmeta.projectile == 'owl_projectile' and Vector3.zero or Vector3.new(bedwars.BowConstantsTable.RelX, bedwars.BowConstantsTable.RelY, bedwars.BowConstantsTable.RelZ))
-                        local v = plr.RootPart.Velocity
-                        local newv = v:Lerp(plr.RootPart.Velocity, 0.5)
-                        pos = entitylib.character.RootPart.Position
-                        local ps = math.min(lplr:GetNetworkPing(), 0.5)
-                        if ps > 0.06 then
-                            targetpos = targetpos + (v * ps)
-                        end
-                        local calc = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, projmeta.projectile == 'telepearl' and Vector3.zero or newv, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck)
+                        local newlook = CFrame.new(offsetpos, plr[TargetPart.Value].Position) * CFrame.new(projmeta.projectile == 'owl_projectile' and Vector3.zero or Vector3.new(bedwars.BowConstantsTable.RelX, bedwars.BowConstantsTable.RelY, bedwars.BowConstantsTable.RelZ))
+                        local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, plr[TargetPart.Value].Position, projmeta.projectile == 'telepearl' and Vector3.zero or plr[TargetPart.Value].Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck)
                         if calc then
                             targetinfo.Targets[plr] = tick() + 1
                             return {
-                                initialVelocity = CFrame.new(newlook.Position, calc).LookVector * (projSpeed * (AutoCharge.Enabled and 1 or projmeta.velocityMultiplier)),
+                                initialVelocity = CFrame.new(newlook.Position, calc).LookVector * projSpeed,
                                 positionFrom = offsetpos,
                                 deltaT = lifetime,
                                 gravitationalAcceleration = gravity,
-                                drawDurationSeconds = AutoCharge.Enabled and 5 or projmeta.drawDurationSeconds,
+                                drawDurationSeconds = 5
                             }
                         end
                     end
     
-                    return nextLaunch(...)
-                end)
-    
-                bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition = function(...)
-                    local origin, dir = select(2, ...)
-                    
-                    -- Blocks blacklist execution for Kick Block elements if defined
-                    if table.find(Blacklist.ListEnabled or {}, 'block_kicker') or table.find(Blacklist.ListEnabled or {}, 'kick_block') then
-                        return oldd(...)
-                    end
-
-                    local plr = entitylib.EntityMouse({
-                        Part = 'RootPart',
-                        Range = FOV.Value,
-                        Players = Targets.Players.Enabled,
-                        NPCs = Targets.NPCs.Enabled,
-                        Wallcheck = Targets.Walls.Enabled,
-                        Sort = sortmethods[Sort.Value or 'Distance'],
-                        Origin = origin,
-                    })
-    
-                    if plr then
-                        local calc = prediction.SolveTrajectory(origin, 100, 20, plr[TargetPart.Value].Position, plr.RootPart.Velocity, workspace.Gravity, plr.HipHeight, plr.Jumping and 42.6 or nil)
-    
-                        if calc then
-                            for i, v in debug.getstack(2) do
-                                if v == dir then
-                                    debug.setstack(2, i, CFrame.lookAt(origin, calc).LookVector)
-                                end
-                            end
-                        end
-                    end
-    
-                    return oldd(...)
+                    return old(...)
                 end
             else
-                bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition = oldd
-                if launchHook then
-                    launchHook()
-                    launchHook = nil
-                end
+                bedwars.ProjectileController.calculateImportantLaunchValues = old
             end
         end,
-        Tooltip = 'Silently adjusts your aim towards the enemy',
+        Tooltip = 'Silently adjusts your aim towards the enemy'
     })
 
     Targets = ProjectileAimbot:CreateTargets({
         Players = true,
-        Walls = true,
+        Walls = true
     })
 
     TargetPart = ProjectileAimbot:CreateDropdown({
         Name = 'Part',
-        List = {'RootPart', 'Head', 'Dynamic', 'Closest'},
-    })
-
-    local methods = {'Damage', 'Distance'}
-    for i in sortmethods do
-        if not table.find(methods, i) then
-            table.insert(methods, i)
-        end
-    end
-
-    Sort = ProjectileAimbot:CreateDropdown({
-        Name = 'Target Mode',
-        List = methods,
-        Default = 'Distance',
-    })
-
-    Prediction = ProjectileAimbot:CreateSlider({
-        Name = 'Prediction',
-        Min = 0.1,
-        Max = 2,
-        Default = 1,
-        Decimal = 10,
+        List = {'RootPart', 'Head'}
     })
 
     FOV = ProjectileAimbot:CreateSlider({
         Name = 'FOV',
         Min = 1,
         Max = 1000,
-        Default = 1000,
+        Default = 1000
     })
 
-    AutoCharge = ProjectileAimbot:CreateToggle({
-        Name = 'Auto Charge',
-        Default = true,
-        Tooltip = 'Fully charges your bow, Allowing your projectile to deal more damage',
-    })
-
+    -- Updated OtherProjectiles to toggle the visibility of the Blacklist text box
     OtherProjectiles = ProjectileAimbot:CreateToggle({
         Name = 'Other Projectiles',
         Default = true,
@@ -3090,17 +2978,13 @@ run(function()
         end,
     })
 
+    -- Added the UI Text List element for adding/removing items from the Blacklist
     Blacklist = ProjectileAimbot:CreateTextList({
         Name = 'Blacklist',
         Default = {'gloop', 'telepearl'},
         Darker = true,
         Placeholder = 'projectile',
     })
-    
-    -- Syncs baseline UI transparency context to user setting defaults instantly
-    if Blacklist and Blacklist.Object then
-        Blacklist.Object.Visible = OtherProjectiles.Enabled
-    end
 end)
 	
 run(function()
