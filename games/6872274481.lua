@@ -316,6 +316,7 @@ local function getHotbar(tool)
 end
 
 local function getFunctionRange(func)
+	if not func then return nil end
 	local last = false
 	for _, v in debug.getconstants(func) do
 		if v == 'maxActivationDistance' then
@@ -820,11 +821,15 @@ run(function()
 	end
 
 	for i, v in remoteNames do
-		local remote = dumpRemote(debug.getconstants(v))
-		if remote == '' then
+		if v then
+			local remote = dumpRemote(debug.getconstants(v))
+			if remote == '' then
+				notif('Vape', 'Failed to grab remote ('..i..')', 10, 'alert')
+			end
+			remotes[i] = remote
+		else
 			notif('Vape', 'Failed to grab remote ('..i..')', 10, 'alert')
 		end
-		remotes[i] = remote
 	end
 
 	OldBreak = bedwars.BlockController.isBlockBreakable
