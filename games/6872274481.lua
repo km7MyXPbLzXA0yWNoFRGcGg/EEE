@@ -305,16 +305,6 @@ local function getTableSize(tab)
 	return ind
 end
 
-local function hotbarSwitch(slot)
-local function getHotbar(tool)
-	for i, v in (store.inventory.hotbar or {}) do
-		if v.item and v.item.tool == tool then
-			return i - 1
-		end
-	end
-	return nil
-end
-
 local function getFunctionRange(func)
 	if not func then return nil end
 	local last = false
@@ -323,6 +313,16 @@ local function getFunctionRange(func)
 			last = true
 		elseif last then
 			return v and typeof(v) == 'number' and v or nil
+		end
+	end
+	return nil
+end
+
+local function hotbarSwitch(slot)
+local function getHotbar(tool)
+	for i, v in (store.inventory.hotbar or {}) do
+		if v.item and v.item.tool == tool then
+			return i - 1
 		end
 	end
 	return nil
