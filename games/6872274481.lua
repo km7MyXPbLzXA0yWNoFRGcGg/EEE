@@ -322,7 +322,6 @@ local function getFunctionRange(func)
 	return nil
 end
 
-local function hotbarSwitch(slot)
 local function getHotbar(tool)
 	for i, v in (store.inventory.hotbar or {}) do
 		if v.item and v.item.tool == tool then
@@ -331,6 +330,8 @@ local function getHotbar(tool)
 	end
 	return nil
 end
+
+local function hotbarSwitch(slot)
 	if slot and store.inventory.hotbarSlot ~= slot then
 		bedwars.Store:dispatch({
 			type = 'InventorySelectHotbarSlot',
@@ -7976,8 +7977,8 @@ run(function()
 	
 	local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
 		if block:GetAttribute('NoHealthbar') then return end
-		if not self.healthbarPart or not self.healthbarBlockRef or self.healthbarBlockRef.blockPosition ~= blockRef.blockPosition then
-			self.healthbarMaid:DoCleaning()
+	if not self.healthbarPart or not self.healthbarBlockRef or self.healthbarBlockRef.blockPosition ~= blockRef.blockPosition then
+		if self.healthbarMaid then self.healthbarMaid:DoCleaning() end
 			self.healthbarBlockRef = blockRef
 			local create = bedwars.Roact.createElement
 			local percent = math.clamp(health / maxHealth, 0, 1)
