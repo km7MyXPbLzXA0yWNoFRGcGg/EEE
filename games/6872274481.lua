@@ -677,7 +677,7 @@ end)
 entitylib.start()
 local function safeGetProto(func, index)
     if not func then return nil end
-    local success, proto = pcall(safeGetProto, func, index)
+    local success, proto = pcall(debug.getupvalue, func, index)
     if success then
         return proto
     else
@@ -709,7 +709,12 @@ run(function()
 		AbilityController = Flamework.resolveDependency('@easy-games/game-core:client/controllers/ability/ability-controller@AbilityController'),
 		AnimationType = require(replicatedStorage.TS.animation['animation-type']).AnimationType,
 		AnimationUtil = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out['shared'].util['animation-util']).AnimationUtil,
-		AppController = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.controllers['app-controller']).AppController,
+		AppController = (function()
+			local success, result = pcall(function()
+				return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.controllers['app-controller']).AppController
+			end)
+			return success and result or nil
+		end)(),
 		BedBreakEffectMeta = require(replicatedStorage.TS.locker['bed-break-effect']['bed-break-effect-meta']).BedBreakEffectMeta,
 		BedwarsKitMeta = require(replicatedStorage.TS.games.bedwars.kit['bedwars-kit-meta']).BedwarsKitMeta,
 		BlockBreaker = Knit.Controllers.BlockBreakController.blockBreaker,
@@ -1372,7 +1377,7 @@ run(function()
 			task.spawn(function()
 				repeat
 					task.wait(0.1)
-				until vape.Loaded == nil or bedwars.AppController:isAppOpen('BedwarsItemShopApp')
+				until vape.Loaded == nil or not bedwars.AppController or bedwars.AppController:isAppOpen('BedwarsItemShopApp')
 
 				bedwars.Shop = require(replicatedStorage.TS.games.bedwars.shop['bedwars-shop']).BedwarsShop
 				bedwars.ShopItems = debug.getupvalue(debug.getupvalue(bedwars.Shop.getShopItem, 1), 2)
@@ -1560,7 +1565,7 @@ run(function()
 
 		Thread = task.spawn(function()
 			repeat
-				if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+					if not bedwars.AppController or not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
 					local blockPlacer = bedwars.BlockPlacementController.blockPlacer
 					if store.hand.toolType == 'block' and blockPlacer then
 						if (workspace:GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp) >= ((1 / 12) * 0.5) then
@@ -1762,7 +1767,7 @@ run(function()
         end
         clickThread = task.spawn(function()
             repeat
-                local shopId = bedwars.AppController:isAppOpen('BedwarsItemShopApp') and store.shopLoaded and getShopId()
+	                local shopId = bedwars.AppController and bedwars.AppController:isAppOpen('BedwarsItemShopApp') and store.shopLoaded and getShopId()
                 if shopId then
                     purchase(itemType, shopId)
                 end
@@ -1778,7 +1783,7 @@ run(function()
             if callback then
                 ShopQuickBuy:Clean(inputService.InputBegan:Connect(function(input)
                     if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-                    if not bedwars.AppController:isAppOpen('BedwarsItemShopApp') then return end
+	                    if not bedwars.AppController or not bedwars.AppController:isAppOpen('BedwarsItemShopApp') then return end
     
                     local itemType = getHoveredItem()
                     if not itemType then return end
@@ -1859,7 +1864,7 @@ run(function()
         if (lplr.Character:GetAttribute('StunnedUntilTime') or 0) - workspace:GetServerTimeNow() > 0 then
             return false
         end
-        if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+        if bedwars.AppController and bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
             return false
         end
     
@@ -2189,7 +2194,7 @@ run(function()
 			if callback then
 				repeat
 					local doAttack
-					if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+				if not bedwars.AppController or not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
 						if entitylib.isAlive and store.hand.toolType == 'sword' and bedwars.DaoController.chargingMaid == nil then
 							local attackRange = bedwars.ItemMeta[store.hand.tool.Name].sword.attackRange
 							rayParams.FilterDescendantsInstances = {lplr.Character}
@@ -2771,7 +2776,7 @@ run(function()
 		end
 
 		if GUI.Enabled then
-			if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then return false end
+			if bedwars.AppController and bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then return false end
 		end
 
 		local sword = Limit.Enabled and store.hand or store.tools.sword
@@ -6180,7 +6185,7 @@ run(function()
 					repeat
 						if entitylib.isAlive and store.matchState ~= 2 then
 							if Open.Enabled then
-								if bedwars.AppController:isAppOpen('ChestApp') then
+								if bedwars.AppController and bedwars.AppController:isAppOpen('ChestApp') then
 									lootChest(lplr.Character:FindFirstChild('ObservedChestFolder'))
 								end
 							else
@@ -6810,7 +6815,7 @@ run(function()
 					local npc, shop, upgrades, newid = getShopNPC()
 					id = newid
 					if GUI.Enabled then
-						if not (bedwars.AppController:isAppOpen('BedwarsItemShopApp') or bedwars.AppController:isAppOpen('TeamUpgradeApp')) then
+						if not (bedwars.AppController and (bedwars.AppController:isAppOpen('BedwarsItemShopApp') or bedwars.AppController:isAppOpen('TeamUpgradeApp'))) then
 							npc = nil
 						end
 					end
