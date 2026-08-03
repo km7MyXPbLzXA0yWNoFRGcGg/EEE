@@ -94,12 +94,15 @@ local gui = readfile('newvape/profiles/gui.txt')
 if not isfolder('newvape/assets/'..gui) then
 	makefolder('newvape/assets/'..gui)
 end
+if setthreadidentity then setthreadidentity(8) end
 vape = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')()
 shared.vape = vape
 
 if not shared.VapeIndependent then
+	if setthreadidentity then setthreadidentity(8) end
 	loadstring(downloadFile('newvape/games/universal.lua'), 'universal')()
 	if isfile('newvape/games/'..game.PlaceId..'.lua') then
+		if setthreadidentity then setthreadidentity(8) end
 		loadstring(readfile('newvape/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...)
 	else
 		if not shared.VapeDeveloper then
@@ -107,10 +110,12 @@ if not shared.VapeIndependent then
 				return game:HttpGet('https://raw.githubusercontent.com/lioboris96-lgtm/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/games/'..game.PlaceId..'.lua', true)
 			end)
 			if suc and res ~= '404: Not Found' then
+				if setthreadidentity then setthreadidentity(8) end
 				loadstring(downloadFile('newvape/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...)
 			end
 		end
 	end
+	if setthreadidentity then setthreadidentity(8) end
 	finishLoading()
 else
 	vape.Init = finishLoading
