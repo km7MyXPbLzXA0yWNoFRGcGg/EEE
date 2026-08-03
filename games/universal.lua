@@ -27,7 +27,11 @@ local function downloadFile(path, func)
 	return (func or readfile)(path)
 end
 local run = function(func)
-	func()
+	if setthreadidentity then setthreadidentity(8) end
+	local suc, err = pcall(func)
+	if not suc and err then
+		warn('[Vape] Module error: '..tostring(err))
+	end
 end
 local queue_on_teleport = queue_on_teleport or function() end
 local cloneref = cloneref or function(obj)
