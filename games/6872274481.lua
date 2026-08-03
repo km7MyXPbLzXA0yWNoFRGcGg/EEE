@@ -1,4 +1,5 @@
 local run = function(func)
+	if setthreadidentity then setthreadidentity(8) end
 	func()
 end
 local cloneref = cloneref or function(obj)

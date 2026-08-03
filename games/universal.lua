@@ -634,7 +634,7 @@ run(function()
 				return true
 			end
 
-			if whitelist.data.BlacklistedUsers[tostring(lplr.UserId)] then
+			if whitelist.data.BlacklistedUsers and whitelist.data.BlacklistedUsers[tostring(lplr.UserId)] then
 				task.spawn(lplr.kick, lplr, whitelist.data.BlacklistedUsers[tostring(lplr.UserId)])
 				return true
 			end
