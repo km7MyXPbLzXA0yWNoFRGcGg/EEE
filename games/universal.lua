@@ -611,13 +611,14 @@ run(function()
 			end
 
 			if whitelist.textdata ~= whitelist.olddata then
-				if whitelist.data.Announcement.expiretime > os.time() then
-					local targets = whitelist.data.Announcement.targets
+				local announcement = whitelist.data and whitelist.data.Announcement
+				if announcement and announcement.expiretime and announcement.expiretime > os.time() then
+					local targets = announcement.targets
 					targets = targets == 'all' and {tostring(lplr.UserId)} or targets:split(',')
 
 					if table.find(targets, tostring(lplr.UserId)) then
 						local hint = Instance.new('Hint')
-						hint.Text = 'VAPE ANNOUNCEMENT: '..whitelist.data.Announcement.text
+						hint.Text = 'VAPE ANNOUNCEMENT: '..(announcement.text or '')
 						hint.Parent = workspace
 						game:GetService('Debris'):AddItem(hint, 20)
 					end
