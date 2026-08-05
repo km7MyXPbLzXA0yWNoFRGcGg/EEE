@@ -10956,6 +10956,7 @@ run(function()
 	
 	local function honorPlayers()
 		if #honoredusers >= maxhonors then return end
+		if not bedwars.HonorController then return end
 		
 		local teammates, nonteammates = getTeammates()
 		
