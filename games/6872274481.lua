@@ -3659,7 +3659,7 @@ run(function()
 						end
 	
 						local targetPart = plr and plr[TargetPart.Value]
-						if not targetPart then continue end
+						if not targetPart then return old(...) end
 						local newlook = CFrame.new(offsetpos, targetPart.Position) * CFrame.new(projmeta.projectile == 'owl_projectile' and Vector3.zero or Vector3.new(bedwars.BowConstantsTable.RelX, bedwars.BowConstantsTable.RelY, bedwars.BowConstantsTable.RelZ))
 						local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, targetPart.Position, projmeta.projectile == 'telepearl' and Vector3.zero or targetPart.Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck)
 						if calc then
