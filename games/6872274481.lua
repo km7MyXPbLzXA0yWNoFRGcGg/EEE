@@ -1,6 +1,9 @@
 local run = function(func)
-	if setthreadidentity then setthreadidentity(8) end
-	local suc, err = pcall(func)
+	local suc, err = pcall(function()
+		if setthreadidentity then setthreadidentity(8) end
+		if setidentity then setidentity(8) end
+		func()
+	end)
 	if not suc and err then
 		warn('[Vape] Module error: '..tostring(err))
 	end
@@ -840,6 +843,13 @@ run(function()
 	OldBreak = bedwars.BlockController.isBlockBreakable
 
 	Client.Get = function(self, remoteName)
+		if not remoteName or remoteName == '' then
+			return {
+				SendToServer = function() end,
+				CallServer = function() end,
+				CallServerAsync = function() end
+			}
+		end
 		local call = OldGet(self, remoteName)
 
 		if remoteName == remotes.AttackEntity then
@@ -1177,7 +1187,7 @@ run(function()
 
 						if blockhealthbar.blockHealth <= 0 then
 							bedwars.BlockBreaker.breakEffect:playBreak(dblock.Name, dpos, lplr)
-							bedwars.BlockBreaker.healthbarMaid:DoCleaning()
+							if bedwars.BlockBreaker.healthbarMaid then bedwars.BlockBreaker.healthbarMaid:DoCleaning() end
 							blockhealthbar.breakingBlockPosition = Vector3.zero
 						else
 							bedwars.BlockBreaker.breakEffect:playHit(dblock.Name, dpos, lplr)
@@ -3648,8 +3658,10 @@ run(function()
 							end
 						end
 	
-						local newlook = CFrame.new(offsetpos, plr[TargetPart.Value].Position) * CFrame.new(projmeta.projectile == 'owl_projectile' and Vector3.zero or Vector3.new(bedwars.BowConstantsTable.RelX, bedwars.BowConstantsTable.RelY, bedwars.BowConstantsTable.RelZ))
-						local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, plr[TargetPart.Value].Position, projmeta.projectile == 'telepearl' and Vector3.zero or plr[TargetPart.Value].Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck)
+						local targetPart = plr and plr[TargetPart.Value]
+						if not targetPart then continue end
+						local newlook = CFrame.new(offsetpos, targetPart.Position) * CFrame.new(projmeta.projectile == 'owl_projectile' and Vector3.zero or Vector3.new(bedwars.BowConstantsTable.RelX, bedwars.BowConstantsTable.RelY, bedwars.BowConstantsTable.RelZ))
+						local calc = prediction.SolveTrajectory(newlook.p, projSpeed, gravity, targetPart.Position, projmeta.projectile == 'telepearl' and Vector3.zero or targetPart.Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck)
 						if calc then
 							targetinfo.Targets[plr] = tick() + 1
 							return {
@@ -4960,7 +4972,7 @@ run(function()
 		miner = function()
 			kitCollection('petrified-player', function(v)
 				bedwars.Client:Get(remotes.MinerDig):SendToServer({
-					petrifyId = v:GetAttribute('PetrifyId')
+					petrifyId = v:GetAttribute('PetrifyId') or v:GetAttribute('Id')
 				})
 			end, 6, true)
 		end,
@@ -13149,7 +13161,8 @@ run(function()
 	                if entitylib.isAlive and (tick() - cooldown) >= Delay.Value then
 	                    local localPosition = entitylib.character.RootPart.Position
 	                    for _, v in souls do
-	                        if (localPosition - v.Position).Magnitude <= Range.Value then
+	                    	local soulPos = v.PrimaryPart and v.PrimaryPart.Position or (v:IsA('BasePart') and v.Position or v:GetPivot().Position)
+	                        if (localPosition - soulPos).Magnitude <= Range.Value then
 	                            bedwars.GameAnimationUtil:playAnimation(lplr.Character, bedwars.AnimationType.MINER_MINE_STONE)
 	                            task.delay(Delay.Value, function()
 	                                if AutoMiner.Enabled and v.Parent then
