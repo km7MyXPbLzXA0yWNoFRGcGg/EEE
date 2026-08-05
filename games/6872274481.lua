@@ -10985,11 +10985,11 @@ run(function()
 			if callback then
 				AutoHonor:Clean(vapeEvents.EntityDeathEvent.Event:Connect(function(deathTable)
 					if deathTable.finalKill and deathTable.entityInstance == lplr.Character and isEveryoneDead() and store.matchState ~= 2 then
-						honorPlayers()
+						pcall(honorPlayers)
 					end
 				end))
 				AutoHonor:Clean(vapeEvents.MatchEndEvent.Event:Connect(function(...)
-					honorPlayers()
+					pcall(honorPlayers)
 				end))
 			else
 				table.clear(honoredusers)
