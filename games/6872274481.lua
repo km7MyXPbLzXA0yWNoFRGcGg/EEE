@@ -12545,7 +12545,7 @@ run(function()
 		AdetundeUpgradeMeta = require(replicatedStorage.TS.games.bedwars.items['frosty-hammer']['frosty-hammer-upgrades']).FrostyHammerUpgradeMeta
 	end)
 	
-	AutoAdetunde = vape.Categories.Minigames:CreateModule({
+	AutoAdetunde = vape.Categories.Kits:CreateModule({
 		Name = 'AutoAdetunde',
 		Function = function(callback)
 			if callback then
@@ -12604,7 +12604,7 @@ run(function()
 		return bed, lastmag
 	end
 	
-	AutoBuilder = vape.Categories.Minigames:CreateModule({
+	AutoBuilder = vape.Categories.Kits:CreateModule({
 		Name = 'AutoBuilder',
 		Function = function(callback)
 			if callback then
@@ -12862,7 +12862,7 @@ run(function()
 		selectContract(session, contract)
 	end
 	
-	AutoCaitlyn = vape.Categories.Minigames:CreateModule({
+	AutoCaitlyn = vape.Categories.Kits:CreateModule({
 		Name = 'AutoCaitlyn',
 		Function = function(callback)
 			if callback then
@@ -12975,7 +12975,7 @@ run(function()
 	
 	local Legit = (bedwars.EldertreeController and bedwars.EldertreeController.createTreeOrbInteraction and getFunctionRange(bedwars.EldertreeController.createTreeOrbInteraction)) or 10
 	
-	AutoElder = vape.Categories.Minigames:CreateModule({
+	AutoElder = vape.Categories.Kits:CreateModule({
 		Name = 'AutoElder',
 		Function = function(call)
 			if call then
@@ -13065,7 +13065,7 @@ run(function()
 	local Delay
 	local Limit
 	
-	AutoEmber = vape.Categories.Minigames:CreateModule({
+	AutoEmber = vape.Categories.Kits:CreateModule({
 		Name = 'AutoEmber',
 		Function = function(call)
 			if call then
@@ -13147,7 +13147,7 @@ run(function()
 		return (block.Position - entitylib.character.RootPart.Position).Magnitude <= Range.Value
 	end
 	
-	AutoGingerbread = vape.Categories.Minigames:CreateModule({
+	AutoGingerbread = vape.Categories.Kits:CreateModule({
 		Name = 'AutoGingerbreadMan',
 		Function = function(callback)
 			if callback then
@@ -13240,7 +13240,7 @@ run(function()
 	local AutoHannah
 	local Range
 	
-	AutoHannah = vape.Categories.Minigames:CreateModule({
+	AutoHannah = vape.Categories.Kits:CreateModule({
 		Name = 'AutoHannah',
 		Function = function(callback)
 			if callback then
@@ -13370,7 +13370,7 @@ run(function()
 		})
 	end
 	
-	AutoKaliyah = vape.Categories.Minigames:CreateModule({
+	AutoKaliyah = vape.Categories.Kits:CreateModule({
 		Name = 'AutoKaliyah',
 		Function = function(call)
 			if call then
@@ -13547,7 +13547,7 @@ run(function()
 	local AutoMarina
 	local Range
 	
-	AutoMarina = vape.Categories.Minigames:CreateModule({
+	AutoMarina = vape.Categories.Kits:CreateModule({
 		Name = 'AutoMarina',
 		Function = function(call)
 			if call then
@@ -13597,7 +13597,7 @@ run(function()
 	local Targets
 	local Range
 	
-	AutoMartin = vape.Categories.Minigames:CreateModule({
+	AutoMartin = vape.Categories.Kits:CreateModule({
 	    Name = 'AutoMartin',
 	    Function = function(callback)
 	        if callback then
@@ -13641,7 +13641,7 @@ run(function()
 	local SelfHeal
 	local TeammateHeal
 	
-	AutoMelody = vape.Categories.Minigames:CreateModule({
+	AutoMelody = vape.Categories.Kits:CreateModule({
 		Name = 'AutoMelody',
 		Function = function(callback)
 			if callback then
@@ -13700,7 +13700,7 @@ run(function()
 	local Legit = (bedwars.HiddenMetalController and bedwars.HiddenMetalController.onKitLocalActivated and getFunctionRange(bedwars.HiddenMetalController.onKitLocalActivated)) or 0
 	local Delay = {}
 	
-	AutoMetal = vape.Categories.Minigames:CreateModule({
+	AutoMetal = vape.Categories.Kits:CreateModule({
 		Name = 'AutoMetal',
 		Function = function(call)
 			if call then
@@ -13794,7 +13794,7 @@ run(function()
 	
 	local Legit = (bedwars.MinerController and bedwars.MinerController.setupMinerPrompts and getFunctionRange(bedwars.MinerController.setupMinerPrompts)) or 0
 	
-	AutoMiner = vape.Categories.Minigames:CreateModule({
+	AutoMiner = vape.Categories.Kits:CreateModule({
 	    Name = 'AutoMiner',
 	    Function = function(callback)
 	        if callback then
@@ -13889,7 +13889,7 @@ run(function()
 		return
 	end
 	
-	AutoNoelle = vape.Categories.Minigames:CreateModule({
+	AutoNoelle = vape.Categories.Kits:CreateModule({
 		Name = 'AutoNoelle',
 		Function = function(call)
 			if call then
@@ -13979,7 +13979,7 @@ run(function()
 	local AutoNyx
 	local Targets
 	
-	AutoNyx = vape.Categories.Minigames:CreateModule({
+	AutoNyx = vape.Categories.Kits:CreateModule({
 		Name = 'AutoNyx',
 		Function = function(call)
 			if call then
@@ -14009,7 +14009,7 @@ run(function()
 	
 	local list = {'Range', 'Heat', 'Power'}
 	
-	AutoPyro = vape.Categories.Minigames:CreateModule({
+	AutoPyro = vape.Categories.Kits:CreateModule({
 		Name = 'AutoPyro',
 		Function = function(callback)
 			if callback then
@@ -14060,7 +14060,7 @@ run(function()
 	local UseTornando
 	local TonradoRange
 	
-	AutoRamil = vape.Categories.Minigames:CreateModule({
+	AutoRamil = vape.Categories.Kits:CreateModule({
 		Name = 'AutoRamil',
 		Function = function(callback)
 			if callback then
@@ -14198,7 +14198,7 @@ run(function()
 	local Animation
 	local Delay
 	
-	AutoStar = vape.Categories.Minigames:CreateModule({
+	AutoStar = vape.Categories.Kits:CreateModule({
 		Name = 'AutoStarCollector',
 		Function = function(callback)
 			if callback then
@@ -14298,7 +14298,7 @@ run(function()
 		return shop, items, upgrades, newid
 	end
 	
-	AutoTaliyah = vape.Categories.Minigames:CreateModule({
+	AutoTaliyah = vape.Categories.Kits:CreateModule({
 		Name = 'AutoTaliyah',
 		Tooltip = 'Automatically buy chickens when it sells for emerald',
 		Function = function(callback)
@@ -14438,7 +14438,7 @@ run(function()
 		return nil
 	end
 	
-	AutoTriton = vape.Categories.Minigames:CreateModule({
+	AutoTriton = vape.Categories.Kits:CreateModule({
 		Name = 'AutoTriton',
 		Function = function(callback)
 			if callback then
@@ -14542,7 +14542,7 @@ run(function()
 		return drop
 	end
 	
-	AutoUma = vape.Categories.Minigames:CreateModule({
+	AutoUma = vape.Categories.Kits:CreateModule({
 		Name = 'AutoUma',
 		Function = function(call)
 			if call then
@@ -14673,7 +14673,7 @@ run(function()
 	local Fly
 	local Level
 	
-	AutoWhisper = vape.Categories.Minigames:CreateModule({
+	AutoWhisper = vape.Categories.Kits:CreateModule({
 		Name = 'AutoWhisper',
 		Function = function(callback)
 			if callback then
@@ -14766,7 +14766,7 @@ run(function()
 	local FishermanSpy
 	local Teammates
 	
-	FishermanSpy = vape.Categories.Minigames:CreateModule({
+	FishermanSpy = vape.Categories.Kits:CreateModule({
 		Name = 'FishermanSpy',
 		Function = function(call)
 			if call then
