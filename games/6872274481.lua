@@ -16345,3 +16345,44 @@ run(function()
 		Tooltip = 'Enter a Roblox asset sound ID to play yo shit'
 	})
 end)
+
+run(function()
+	local InfKrystal
+	local UPDATE_INTERVAL = 0.016
+	local lastUpdateTime = 0
+	local renderStepName = 'InfiniteKrystalMovement'
+
+	InfKrystal = vape.Categories.Kits:CreateModule({
+		Name = 'InfKrystal',
+		Tooltip = 'Infinite Krystal movement',
+		Function = function(callback)
+			if callback then
+				lastUpdateTime = 0
+
+				runService:BindToRenderStep(
+					renderStepName,
+					Enum.RenderPriority.Character.Value + 2,
+					function()
+						local currentTime = tick()
+
+						if currentTime - lastUpdateTime < UPDATE_INTERVAL then
+							return
+						end
+
+						lastUpdateTime = currentTime
+
+						pcall(function()
+							bedwars.GlacialSkaterController:updateMomentum(100, "newValue")
+						end)
+					end
+				)
+			else
+				runService:UnbindFromRenderStep(renderStepName)
+
+				pcall(function()
+					bedwars.GlacialSkaterController:updateMomentum(0, "newValue")
+				end)
+			end
+		end
+	})
+end)
