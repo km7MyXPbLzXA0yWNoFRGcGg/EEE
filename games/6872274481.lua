@@ -12588,16 +12588,14 @@ end
                                 if not block then
                                     blockpos = blockpos * 3
                                     
-                                    if hasFaceBelowOrSide(blockpos) then
-    								if canPlaceAtPosition(blockpos) then
-      							  task.spawn(bedwars.placeBlock, blockpos, wool, false)
-  								  end
-									else
-                                        local nearestBlock = blockProximity(currentpos)
-                                        if nearestBlock and canPlaceAtPosition(nearestBlock) then
-                                            task.spawn(bedwars.placeBlock, nearestBlock, wool, false)
-                                        end
-                                    end
+                           if canPlaceAtPosition(blockpos) then
+    task.spawn(bedwars.placeBlock, blockpos, wool, false)
+else
+    local nearestBlock = blockProximity(currentpos)
+    if nearestBlock and canPlaceAtPosition(nearestBlock) then
+        task.spawn(bedwars.placeBlock, nearestBlock, wool, false)
+    end
+end
                                 end
                             end
                         end
