@@ -1688,19 +1688,92 @@ run(function()
 end)
 	
 run(function()
-	local Value
-	
+	local Attack
+	local Mine
+	local Place
+	local oldAttackReach, oldMineReach, oldPlaceReach
+	local SwordReach, MineReach
+
 	Reach = vape.Categories.Combat:CreateModule({
 		Name = 'Reach',
 		Function = function(callback)
-			bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE = callback and Value.Value + 2 or 14.4
+			if callback then
+				if SwordReach and SwordReach.Enabled then
+					oldAttackReach = bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE
+					bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE = Attack.Value + 2
+				end
+				
+				task.spawn(function()
+					repeat task.wait(0.1) until bedwars.BlockBreakController or not Reach.Enabled
+					if not Reach.Enabled or not MineReach or not MineReach.Enabled then return end
+					
+					pcall(function()
+						local blockBreaker = bedwars.BlockBreakController:getBlockBreaker()
+						if blockBreaker then
+							oldMineReach = oldMineReach or blockBreaker:getRange()
+							blockBreaker:setRange(Mine.Value)
+						end
+					end)
+				end)
+				
+				task.spawn(function()
+					while Reach.Enabled do
+						task.wait(5)
+						if not Reach.Enabled then break end
+						if SwordReach.Enabled and bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE ~= Attack.Value + 2 then
+							bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE = Attack.Value + 2
+						end
+						if MineReach.Enabled then
+							pcall(function()
+								local blockBreaker = bedwars.BlockBreakController:getBlockBreaker()
+								if blockBreaker and blockBreaker:getRange() ~= Mine.Value then
+									blockBreaker:setRange(Mine.Value)
+								end
+							end)
+						end
+					end
+				end)
+			else
+				if oldAttackReach then
+					bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE = oldAttackReach
+				end
+				
+				if oldMineReach then
+					pcall(function()
+						local blockBreaker = bedwars.BlockBreakController:getBlockBreaker()
+						if blockBreaker then
+							blockBreaker:setRange(oldMineReach)
+						end
+					end)
+				end
+
+				oldAttackReach, oldMineReach = nil, nil
+			end
 		end,
-		Tooltip = 'Extends attack reach'
+		Tooltip = 'Extends reach for attacking, mining, and placing blocks'
 	})
-	Value = Reach:CreateSlider({
-		Name = 'Range',
+	
+	SwordReach = Reach:CreateToggle({
+		Name = 'Sword Reach',
+		Default = true,
+		Function = function(v)
+			if Attack then Attack.Object.Visible = v end
+			if Reach.Enabled then
+				if v then
+					bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE = Attack.Value + 2
+				else
+					bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE = oldAttackReach or 14.4
+				end
+			end
+		end
+	})
+
+	Attack = Reach:CreateSlider({
+		Name = 'Attack Range',
+		Darker = true,
+		Visible = true,
 		Min = 0,
-		Max = 18,
+		Max = 20,
 		Default = 18,
 		Function = function(val)
 			if Reach.Enabled then
@@ -1711,8 +1784,37 @@ run(function()
 			return val == 1 and 'stud' or 'studs'
 		end
 	})
-end)
+	
+	MineReach = Reach:CreateToggle({
+		Name = 'Mine Reach',
+		Default = false,
+		Function = function(v)
+			if Mine then Mine.Object.Visible = v end
+		end
+	})
 
+	Mine = Reach:CreateSlider({
+		Name = 'Mine Range',
+		Darker = true,
+		Visible = false,
+		Min = 0,
+		Max = 30,
+		Default = 18,
+		Function = function(val)
+			if Reach.Enabled then
+				pcall(function()
+					local blockBreaker = bedwars.BlockBreakController:getBlockBreaker()
+					if blockBreaker then
+						blockBreaker:setRange(val)
+					end
+				end)
+			end
+		end,
+		Suffix = function(val)
+			return val == 1 and 'stud' or 'studs'
+		end
+	})
+end)
 run(function()
     local ShopQuickBuy -- coded by seven
     local HoldDelay
