@@ -12566,7 +12566,7 @@ end
             checkBelow = checkBelow - Vector3.new(0, 3, 0)
         end
         
-        return hasSupport or hasFaceBelowOrSide(blockpos)
+       return hasSupport
     end
     
     AutoBuildUp = vape.Categories.World:CreateModule({
@@ -12589,10 +12589,10 @@ end
                                     blockpos = blockpos * 3
                                     
                                     if hasFaceBelowOrSide(blockpos) then
-                                        if canPlaceAtPosition(blockpos) then
-                                            task.spawn(bedwars.placeBlock, blockpos, wool, false)
-                                        end
-                                    else
+    								if canPlaceAtPosition(blockpos) then
+      							  task.spawn(bedwars.placeBlock, blockpos, wool, false)
+  								  end
+									else
                                         local nearestBlock = blockProximity(currentpos)
                                         if nearestBlock and canPlaceAtPosition(nearestBlock) then
                                             task.spawn(bedwars.placeBlock, nearestBlock, wool, false)
