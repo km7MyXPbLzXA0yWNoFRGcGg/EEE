@@ -5799,6 +5799,11 @@ mainapi:CreateCategory({
 })
 mainapi.Categories.Main:CreateDivider('misc')
 
+mainapi:CreateCategory({
+    Name = 'Kits',
+    Icon = getcustomasset('newvape/assets/new/miniicon.png'),
+    Size = UDim2.fromOffset(19, 12)
+})
 --[[
 	Friends
 ]]
