@@ -12542,9 +12542,13 @@ run(function()
     local AutoBuildUp
     local LimitItem
     
-    local function getScaffoldBlock()
-        return getScaffoldBlockForModule(LimitItem)
+local function getScaffoldBlock()
+    if LimitItem then
+        return LimitItem
     end
+
+    return getItemNearType("wool")
+end
 
     local function canPlaceAtPosition(blockpos)
         if not checkFaceAdjacent(blockpos) then
