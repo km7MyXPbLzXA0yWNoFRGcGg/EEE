@@ -785,36 +785,24 @@ run(function()
 	})
 
 	local remoteNames = {
-		AfkStatus = safeGetProto(Knit.Controllers.AfkController.KnitStart, 1),
 		AttackEntity = Knit.Controllers.SwordController.sendServerRequest,
 		BeePickup = Knit.Controllers.BeeNetController.trigger,
-		CannonAim = safeGetProto(Knit.Controllers.CannonController.startAiming, 5),
 		CannonLaunch = Knit.Controllers.CannonHandController.launchSelf,
-		ConsumeBattery = safeGetProto(Knit.Controllers.BatteryController.onKitLocalActivated, 1),
 		ConsumeItem = safeGetProto(Knit.Controllers.ConsumeController.onEnable, 1),
 		ConsumeSoul = Knit.Controllers.GrimReaperController.consumeSoul,
 		ConsumeTreeOrb = safeGetProto(Knit.Controllers.EldertreeController.createTreeOrbInteraction, 1),
 		DepositPinata = safeGetProto(safeGetProto(Knit.Controllers.PiggyBankController.KnitStart, 2), 5),
 		DragonBreath = safeGetProto(Knit.Controllers.VoidDragonController.onKitLocalActivated, 5),
-		DragonEndFly = safeGetProto(Knit.Controllers.VoidDragonController.flapWings, 1),
-		DragonFly = Knit.Controllers.VoidDragonController.flapWings,
 		DropItem = Knit.Controllers.ItemDropController.dropItemInHand,
 		EquipItem = safeGetProto(require(replicatedStorage.TS.entity.entities['inventory-entity']).InventoryEntity.equipItem, 3),
 		FireProjectile = debug.getupvalue(Knit.Controllers.ProjectileController.launchProjectileWithValues, 2),
 		GroundHit = Knit.Controllers.FallDamageController.KnitStart,
 		GuitarHeal = Knit.Controllers.GuitarController.performHeal,
 		HannahKill = safeGetProto(Knit.Controllers.HannahController.registerExecuteInteractions, 1),
-		HarvestCrop = safeGetProto(safeGetProto(Knit.Controllers.CropController.KnitStart, 4), 1),
-		KaliyahPunch = safeGetProto(Knit.Controllers.DragonSlayerController.onKitLocalActivated, 1),
 		MageSelect = safeGetProto(Knit.Controllers.MageController.registerTomeInteraction, 1),
-		MinerDig = safeGetProto(Knit.Controllers.MinerController.setupMinerPrompts, 1),
 		PickupItem = Knit.Controllers.ItemDropController.checkForPickup,
-		PickupMetal = safeGetProto(Knit.Controllers.HiddenMetalController.onKitLocalActivated, 4),
 		ReportPlayer = require(lplr.PlayerScripts.TS.controllers.global.report['report-controller']).default.reportPlayer,
-		ResetCharacter = safeGetProto(Knit.Controllers.ResetController.createBindable, 1),
-		SpawnRaven = safeGetProto(Knit.Controllers.RavenController.KnitStart, 1),
 		SummonerClawAttack = Knit.Controllers.SummonerClawHandController.attack,
-		WarlockTarget = safeGetProto(Knit.Controllers.WarlockStaffController.KnitStart, 2)
 	}
 
 	local function dumpRemote(tab)
