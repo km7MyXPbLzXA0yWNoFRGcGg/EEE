@@ -16415,3 +16415,496 @@ run(function()
         end
     end))
 end)
+
+run(function()
+	local DRBedAlarm
+	local DetectionRange
+	local RepeatNotifications
+	local NotificationDelay
+	local UseDisplayName
+	local NotifyKits
+	local TepearlCheck
+	local TepearlRange
+	local HighlightEnemies
+	local HighlightColor
+	local PlayAlarmSound
+	local UseCustomSound
+	local AlarmSoundId
+	local AlarmVolume
+	local customAlarmSound = nil
+	local AlarmActive = false
+	local PlayersNearBed = {}
+	local LastNotificationTime = {}
+	local CachedBed = nil
+	local CachedBedPosition = nil
+	local LastBedCheck = 0
+	local PearlCache = {} 
+	local LastPearlCheck = {}
+	local ActiveHighlights = {}
+	local LastAlarmSoundTick = 0
+	
+	local function getKitName(kitId)
+		if bedwars.BedwarsKitMeta[kitId] then
+			return bedwars.BedwarsKitMeta[kitId].name
+		end
+		return kitId:gsub("_", " "):gsub("^%l", string.upper)
+	end
+	
+	local function getOwnBed()
+		local currentTime = tick()
+		
+		if CachedBed and CachedBed.Parent and (currentTime - LastBedCheck) < 2 then
+			return CachedBed, CachedBedPosition
+		end
+		
+		if not entitylib.isAlive then 
+			CachedBed = nil
+			CachedBedPosition = nil
+			return nil 
+		end
+		
+		local playerTeam = lplr:GetAttribute('Team')
+		if not playerTeam then 
+			CachedBed = nil
+			CachedBedPosition = nil
+			return nil 
+		end
+		
+		local tagged = collectionService:GetTagged('bed')
+		for _, bed in ipairs(tagged) do
+			if bed:GetAttribute('Team'..playerTeam..'NoBreak') then
+				CachedBed = bed
+				CachedBedPosition = bed.Position
+				LastBedCheck = currentTime
+				return bed, CachedBedPosition
+			end
+		end
+		
+		CachedBed = nil
+		CachedBedPosition = nil
+		return nil
+	end
+	
+	local function getPlayerName(ent)
+		if not ent.Player then return ent.Character.Name end
+		return UseDisplayName.Enabled and ent.Player.DisplayName or ent.Player.Name
+	end
+	
+	local function getPlayerKit(ent)
+		if not ent.Player then return nil end
+		local kit = ent.Player:GetAttribute('PlayingAsKits')
+		if kit and kit ~= 'none' then
+			return getKitName(kit)
+		end
+		return nil
+	end
+	
+	local function isHoldingPearl(ent, currentTime)
+		if not ent.Player then return false end
+		
+		local lastCheck = LastPearlCheck[ent] or 0
+		if (currentTime - lastCheck) < 0.5 and PearlCache[ent] ~= nil then
+			return PearlCache[ent]
+		end
+		
+		local inventory = store.inventories[ent.Player]
+		if not inventory then 
+			PearlCache[ent] = false
+			LastPearlCheck[ent] = currentTime
+			return false 
+		end
+		
+		local handItem = inventory.hand
+		
+		if handItem and handItem.itemType then
+			local itemType = handItem.itemType:lower()
+			local hasPearl = itemType == 'telepearl' or itemType == 'teleport_pearl' or itemType:find('pearl', 1, true)
+			PearlCache[ent] = hasPearl
+			LastPearlCheck[ent] = currentTime
+			return hasPearl
+		end
+		
+		PearlCache[ent] = false
+		LastPearlCheck[ent] = currentTime
+		return false
+	end
+	
+	local function createHighlight(ent)
+		if not HighlightEnemies.Enabled then return end
+		if ActiveHighlights[ent] then return end
+		
+		local character = ent.Character
+		if not character then return end
+		
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "DRBedAlarmHighlight"
+		highlight.Adornee = character
+		local hue, sat, val = HighlightColor.Hue, HighlightColor.Sat, HighlightColor.Value
+		local color = Color3.fromHSV(hue, sat, val)
+		highlight.FillColor = color
+		highlight.OutlineColor = color
+		highlight.FillTransparency = 0.5
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Parent = character
+		
+		ActiveHighlights[ent] = highlight
+	end
+	
+	local function removeHighlight(ent)
+		if ActiveHighlights[ent] then
+			ActiveHighlights[ent]:Destroy()
+			ActiveHighlights[ent] = nil
+		end
+	end
+	
+	local function playAlarm(bedPosition, entPosition)
+		if not PlayAlarmSound.Enabled then return end
+		if os.time() < AlarmSoundTick then return end
+		AlarmSoundTick = os.time() + 1.2
+
+		if UseCustomSound and UseCustomSound.Enabled and AlarmSoundId and AlarmSoundId.Value and AlarmSoundId.Value ~= '' then
+			pcall(function()
+				if not customAlarmSound or not customAlarmSound.Parent then
+					customAlarmSound = Instance.new('Sound')
+					customAlarmSound.Parent = workspace
+				end
+				customAlarmSound.SoundId = 'rbxassetid://' .. AlarmSoundId.Value
+				customAlarmSound.Volume = AlarmVolume.Value
+				customAlarmSound:Play()
+			end)
+			return
+		end
+
+		local distance = entPosition and (bedPosition - entPosition).Magnitude or 0
+		local soundId = distance >= 30 and bedwars.SoundList.BED_ALARM_TRIGGERED_FAR or bedwars.SoundList.BED_ALARM
+		pcall(function()
+			bedwars.SoundManager:playSound(soundId, {
+				volumeMultiplier = AlarmVolume.Value
+			})
+		end)
+	end
+	
+	local function stopAlarm()
+	end
+	
+	local function createNotification(ent, hasPearl)
+		local playerName = getPlayerName(ent)
+		local message = playerName..' is near your bed!'
+		
+		if hasPearl then
+			message = playerName..' is near your bed WITH A PEARL!'
+		end
+		
+		if NotifyKits.Enabled then
+			local kit = getPlayerKit(ent)
+			if kit then
+				if hasPearl then
+					message = playerName..' is near your bed WITH A PEARL! (Kit: '..kit..')'
+				else
+					message = playerName..' is near your bed! (Kit: '..kit..')'
+				end
+			end
+		end
+		
+		notif('Bed Alarm', message, 3)
+	end
+	
+	local lastCheckTime = 0
+	local function checkPlayers()
+		if not DRBedAlarm.Enabled then return end
+		if not entitylib.isAlive then return end
+		
+		local currentTime = tick()
+		
+		if (currentTime - lastCheckTime) < 0.1 then
+			return
+		end
+		lastCheckTime = currentTime
+		
+		local bed, bedPosition = getOwnBed()
+		if not bed or not bedPosition then return end
+		
+		local currentPlayersNear = {}
+		local normalRange = DetectionRange.Value
+		local pearlRangeEnabled = TepearlCheck.Enabled
+		local pearlRange = pearlRangeEnabled and TepearlRange.Value or normalRange
+		
+		local normalRangeSq = normalRange * normalRange
+		local pearlRangeSq = pearlRange * pearlRange
+		
+		local anyoneNear = false
+		local lastNearEnt = nil
+		
+		for _, ent in ipairs(entitylib.List) do
+			if not ent.Targetable then continue end
+			if not ent.Player then continue end
+			if getAccountTier(ent.Player) >= 4 and getAccountTier(ent.Player) < 99 and getAccountTier(lplr) == 0 then continue end
+
+
+			local distanceVector = ent.RootPart.Position - bedPosition
+			local distanceSq = distanceVector.X * distanceVector.X + distanceVector.Y * distanceVector.Y + distanceVector.Z * distanceVector.Z
+			
+			local hasPearl = false
+			local inRange = false
+			
+			if pearlRangeEnabled and distanceSq <= pearlRangeSq then
+				hasPearl = isHoldingPearl(ent, currentTime)
+				if hasPearl then
+					inRange = true
+				end
+			end
+			
+			if not inRange and distanceSq <= normalRangeSq then
+				inRange = true
+			end
+			
+			if inRange then
+				currentPlayersNear[ent] = true
+				anyoneNear = true
+				lastNearEnt = ent
+				
+				createHighlight(ent)
+				
+				local shouldNotify = false
+				
+				if not PlayersNearBed[ent] then
+					shouldNotify = true
+				elseif RepeatNotifications.Enabled then
+					local lastTime = LastNotificationTime[ent] or 0
+					if currentTime - lastTime >= NotificationDelay.Value then
+						shouldNotify = true
+					end
+				end
+				
+				if shouldNotify then
+					createNotification(ent, hasPearl)
+					LastNotificationTime[ent] = currentTime
+					if PlayAlarmSound.Enabled and tick() - LastAlarmSoundTick >= NotificationDelay.Value then
+						LastAlarmSoundTick = tick()
+						local distance = (bedPosition - ent.RootPart.Position).Magnitude
+						local soundId = distance >= 30 and bedwars.SoundList.BED_ALARM_TRIGGERED_FAR or bedwars.SoundList.BED_ALARM
+						pcall(function()
+							bedwars.SoundManager:playSound(soundId, {
+								volumeMultiplier = AlarmVolume.Value
+							})
+						end)
+					end
+				end
+			else
+				removeHighlight(ent)
+			end
+		end
+		
+		for ent, _ in pairs(ActiveHighlights) do
+			if not currentPlayersNear[ent] then
+				removeHighlight(ent)
+			end
+		end
+		
+		PlayersNearBed = currentPlayersNear
+	end
+	
+	DRBedAlarm = vape.Categories.Utility:CreateModule({
+		Name = 'DRBedAlarm',
+		Function = function(callback)
+			if callback then
+				local bed = getOwnBed()
+				if not bed then
+					notif('DRBedAlarm', 'Cannot locate your bed!', 3)
+					DRBedAlarm:Toggle()
+					return
+				end
+				
+				AlarmActive = true
+				PlayersNearBed = {}
+				LastNotificationTime = {}
+				PearlCache = {}
+				LastPearlCheck = {}
+				ActiveHighlights = {}
+				lastCheckTime = 0
+				
+				DRBedAlarm:Clean(task.spawn(function()
+					while DRBedAlarm.Enabled do
+						checkPlayers()
+						task.wait(0.1)
+					end
+				end))
+			else
+				AlarmActive = false
+				
+				stopAlarm()
+				AlarmSoundTick = 0
+				
+				for ent, highlight in pairs(ActiveHighlights) do
+					if highlight then
+						highlight:Destroy()
+					end
+				end
+				
+				table.clear(PlayersNearBed)
+				table.clear(LastNotificationTime)
+				table.clear(PearlCache)
+				table.clear(LastPearlCheck)
+				table.clear(ActiveHighlights)
+				CachedBed = nil
+				CachedBedPosition = nil
+			end
+		end,
+		Tooltip = 'Alerts you when enemies are near your bed'
+	})
+	
+	DetectionRange = DRBedAlarm:CreateSlider({
+		Name = 'Detection Range',
+		Function = function() end,
+		Default = 30,
+		Min = 10,
+		Max = 100,
+		Tooltip = 'Distance in studs to detect players near bed'
+	})
+	
+	TepearlCheck = DRBedAlarm:CreateToggle({
+		Name = 'Telepearl Check',
+		Function = function(callback)
+			if TepearlRange and TepearlRange.Object then
+				TepearlRange.Object.Visible = callback
+			end
+		end,
+		Default = false,
+		Tooltip = 'Extended detection range for players holding pearls'
+	})
+	
+	TepearlRange = DRBedAlarm:CreateSlider({
+		Name = 'Pearl Range',
+		Function = function() end,
+		Default = 250,
+		Min = 100,
+		Max = 500,
+		Visible = false,
+		Tooltip = 'Detection range for players with pearls'
+	})
+	
+	RepeatNotifications = DRBedAlarm:CreateToggle({
+		Name = 'Repeat Notifications',
+		Function = function(callback)
+			if NotificationDelay and NotificationDelay.Object then
+				NotificationDelay.Object.Visible = callback
+			end
+		end,
+		Default = false,
+		Tooltip = 'Continue notifying while players remain near bed'
+	})
+	
+	NotificationDelay = DRBedAlarm:CreateSlider({
+		Name = 'Notification Delay',
+		Function = function() end,
+		Default = 5,
+		Min = 1,
+		Max = 10,
+		Visible = false,
+		Tooltip = 'Seconds between repeat notifications'
+	})
+	
+	UseDisplayName = DRBedAlarm:CreateToggle({
+		Name = 'Show Display Name',
+		Function = function() end,
+		Default = true,
+		Tooltip = 'Show player display names instead of usernames'
+	})
+	
+	NotifyKits = DRBedAlarm:CreateToggle({
+		Name = 'Notify Kits',
+		Function = function() end,
+		Default = true,
+		Tooltip = 'Include player kit in notification'
+	})
+	
+	HighlightEnemies = DRBedAlarm:CreateToggle({
+		Name = 'Highlight Enemies',
+		Function = function(callback)
+			if HighlightColor and HighlightColor.Object then
+				HighlightColor.Object.Visible = callback
+			end
+			
+			if not callback then
+				for ent, highlight in pairs(ActiveHighlights) do
+					if highlight then
+						highlight:Destroy()
+					end
+				end
+				table.clear(ActiveHighlights)
+			end
+		end,
+		Default = false,
+		Tooltip = 'Highlight enemies near your bed through walls'
+	})
+	
+	HighlightColor = DRBedAlarm:CreateColorSlider({
+		Name = 'Highlight Color',
+		Function = function(hue, sat, val)
+			local newColor = Color3.fromHSV(hue, sat, val)
+			for ent, highlight in pairs(ActiveHighlights) do
+				if highlight then
+					highlight.FillColor = newColor
+					highlight.OutlineColor = newColor
+				end
+			end
+		end,
+		Default = 1,
+		Visible = false,
+		Tooltip = 'Color of the enemy highlight'
+	})
+	
+	PlayAlarmSound = DRBedAlarm:CreateToggle({
+		Name = 'Play Alarm Sound',
+		Function = function(callback)
+			if AlarmVolume and AlarmVolume.Object then
+				AlarmVolume.Object.Visible = callback
+			end
+			if UseCustomSound and UseCustomSound.Object then
+				UseCustomSound.Object.Visible = callback
+			end
+			if not callback then
+				stopAlarm()
+				if customAlarmSound and customAlarmSound.Parent then
+					customAlarmSound:Stop()
+				end
+			end
+		end,
+		Default = false,
+		Tooltip = 'Play alarm sound when enemies are near bed'
+	})
+	
+	AlarmVolume = DRBedAlarm:CreateSlider({
+		Name = 'Alarm Volume',
+		Function = function() end,
+		Default = 1.5,
+		Min = 0.1,
+		Max = 3,
+		Decimal = 5,
+		Visible = false,
+		Tooltip = 'Volume multiplier for the alarm sound'
+	})
+
+	UseCustomSound = DRBedAlarm:CreateToggle({
+		Name = 'Use Custom Sound',
+		Function = function(callback)
+			if AlarmSoundId and AlarmSoundId.Object then
+				AlarmSoundId.Object.Visible = callback
+			end
+			if not callback and customAlarmSound and customAlarmSound.Parent then
+				customAlarmSound:Stop()
+			end
+		end,
+		Default = false,
+		Visible = false,
+		Tooltip = 'Use a custom Roblox sound ID instead of the default alarm'
+	})
+
+	AlarmSoundId = DRBedAlarm:CreateTextBox({
+		Name = 'Custom Sound ID',
+		Default = '131961136',
+		Visible = false,
+		Tooltip = 'Enter a Roblox asset sound ID to play yo shit'
+	})
+end)
