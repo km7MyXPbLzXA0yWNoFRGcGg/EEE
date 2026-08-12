@@ -12539,80 +12539,78 @@ run(function()
 end)
 
 run(function()
-    local AutoBuildUp
-    local LimitItem
-    
-local function getScaffoldBlock()
-    if LimitItem then
-        return LimitItem
-    end
+	local AutoBuildUp
+	local LimitItem
 
-    return getItemNearType("wool")
-end
+	local function getScaffoldBlock()
+		if LimitItem then
+			return LimitItem
+		end
 
-    local function canPlaceAtPosition(blockpos)
-        if not checkFaceAdjacent(blockpos) then
-            return false
-        end
-        
-        local checkBelow = blockpos - Vector3.new(0, 3, 0)
-        local hasSupport = false
-        
-        for i = 1, 10 do
-            if getPlacedBlock(checkBelow) then
-                hasSupport = true
-                break
-            end
-            checkBelow = checkBelow - Vector3.new(0, 3, 0)
-        end
-        
-       return hasSupport
-    end
-    
-    AutoBuildUp = vape.Categories.World:CreateModule({
-        Name = 'AutoBuildUp',
-        Function = function(callback)
-            
-            if callback then
-                repeat
-                    if entitylib.isAlive then
-                        local wool = getScaffoldBlock()
-                        
-                        if wool then
-                            local root = entitylib.character.RootPart
-                            
-                            if inputService:IsKeyDown(Enum.KeyCode.Space) and (not inputService:GetFocusedTextBox()) then
-                                local currentpos = roundPos(root.Position - Vector3.new(0, entitylib.character.HipHeight + 1.5, 0))
-                                
-                                local block, blockpos = getPlacedBlock(currentpos)
-                                if not block then
-                                    blockpos = blockpos * 3
-                                    
-                           if canPlaceAtPosition(blockpos) then
-    task.spawn(bedwars.placeBlock, blockpos, wool, false)
-else
-    local nearestBlock = blockProximity(currentpos)
-    if nearestBlock and canPlaceAtPosition(nearestBlock) then
-        task.spawn(bedwars.placeBlock, nearestBlock, wool, false)
-    end
-end
-                                end
-                            end
-                        end
-                    end
-                    
-                    task.wait(0.03)
-                until not AutoBuildUp.Enabled
-            end
-        end,
-        Tooltip = 'Automatically places blocks under you ONLY when jumping (no corner connections)'
-    })
-    
-    LimitItem = AutoBuildUp:CreateToggle({
-        Name = 'Limit to items',
-        Default = false,
-        Tooltip = 'Only place blocks when holding a block item'
-    })
+		return getItemNearType("wool")
+	end
+
+	AutoBuildUp = vape.Categories.World:CreateModule({
+		Name = 'AutoBuildUp',
+		Function = function(callback)
+			if callback then
+				repeat
+					if entitylib.isAlive then
+						local wool = getScaffoldBlock()
+
+						if wool then
+							local root = entitylib.character.RootPart
+
+							if inputService:IsKeyDown(Enum.KeyCode.Space)
+								and not inputService:GetFocusedTextBox() then
+
+								local currentpos = roundPos(
+									root.Position
+									- Vector3.new(
+										0,
+										entitylib.character.HipHeight + 1.5,
+										0
+									)
+								)
+
+								local blockpos = currentpos * 3
+
+								if canPlaceAtPosition(blockpos) then
+									task.spawn(
+										bedwars.placeBlock,
+										blockpos,
+										wool,
+										false
+									)
+								else
+									local nearestBlock = blockProximity(currentpos)
+
+									if nearestBlock
+										and canPlaceAtPosition(nearestBlock) then
+										task.spawn(
+											bedwars.placeBlock,
+											nearestBlock,
+											wool,
+											false
+										)
+									end
+								end
+							end
+						end
+					end
+
+					task.wait(0.03)
+				until not AutoBuildUp.Enabled
+			end
+		end,
+		Tooltip = 'Automatically places blocks under you ONLY when jumping'
+	})
+
+	LimitItem = AutoBuildUp:CreateToggle({
+		Name = 'Limit to items',
+		Default = false,
+		Tooltip = 'Only place blocks when holding a block item'
+	})
 end)
 
 run(function()
