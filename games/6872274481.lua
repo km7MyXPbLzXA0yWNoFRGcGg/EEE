@@ -3420,89 +3420,40 @@ run(function()
 end)
 	
 run(function()
-	local NoFall
-	local Mode
-	local rayParams = RaycastParams.new()
-	local groundHit
-	task.spawn(function()
-		groundHit = bedwars.Client:Get(remotes.GroundHit).instance
-	end)
-	
-	NoFall = vape.Categories.Blatant:CreateModule({
-		Name = 'NoFall',
-		Function = function(callback)
-			if callback then
-				local tracked = 0
-				if Mode.Value == 'Gravity' then
-					local extraGravity = 0
-					NoFall:Clean(runService.PreSimulation:Connect(function(dt)
-						if entitylib.isAlive then
-							local root = entitylib.character.RootPart
-							if root.AssemblyLinearVelocity.Y < -85 then
-								rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
-								rayParams.CollisionGroup = root.CollisionGroup
-	
-								local rootSize = root.Size.Y / 2 + entitylib.character.HipHeight
-								local ray = workspace:Blockcast(root.CFrame, Vector3.new(3, 3, 3), Vector3.new(0, (tracked * 0.1) - rootSize, 0), rayParams)
-								if not ray then
-									root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, -86, root.AssemblyLinearVelocity.Z)
-									root.CFrame += Vector3.new(0, extraGravity * dt, 0)
-									extraGravity += -workspace.Gravity * dt
-								end
-							else
-								extraGravity = 0
-							end
-						end
-					end))
-				else
-					repeat
-						if entitylib.isAlive then
-							local root = entitylib.character.RootPart
-							tracked = entitylib.character.Humanoid.FloorMaterial == Enum.Material.Air and math.min(tracked, root.AssemblyLinearVelocity.Y) or 0
-	
-							if tracked < -85 then
-								if Mode.Value == 'Packet' then
-									groundHit:FireServer(nil, Vector3.new(0, tracked, 0), workspace:GetServerTimeNow())
-								else
-									rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
-									rayParams.CollisionGroup = root.CollisionGroup
-	
-									local rootSize = root.Size.Y / 2 + entitylib.character.HipHeight
-									if Mode.Value == 'Teleport' then
-										local ray = workspace:Blockcast(root.CFrame, Vector3.new(3, 3, 3), Vector3.new(0, -1000, 0), rayParams)
-										if ray then
-											root.CFrame -= Vector3.new(0, root.Position.Y - (ray.Position.Y + rootSize), 0)
-										end
-									else
-										local ray = workspace:Blockcast(root.CFrame, Vector3.new(3, 3, 3), Vector3.new(0, (tracked * 0.1) - rootSize, 0), rayParams)
-										if ray then
-											tracked = 0
-											root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, -80, root.AssemblyLinearVelocity.Z)
-										end
-									end
-								end
-							end
-						end
-	
-						task.wait(0.03)
-					until not NoFall.Enabled
-				end
-			end
-		end,
-		Tooltip = 'Prevents taking fall damage.'
-	})
-	Mode = NoFall:CreateDropdown({
-		Name = 'Mode',
-		List = {'Packet', 'Gravity', 'Teleport', 'Bounce'},
-		Function = function()
-			if NoFall.Enabled then
-				NoFall:Toggle()
-				NoFall:Toggle()
-			end
-		end
-	})
+    local NoFall
+
+    NoFall = vape.Categories.Blatant:CreateModule({
+        Name = 'Render NoFall',
+        Function = function(callback)
+            if callback then
+                NoFall:Clean(runService.Heartbeat:Connect(function(dt)
+                    if entitylib.isAlive and bedwars.Knit.Controllers.MatchController:getMatchState() == 1 then
+                        local root = entitylib.character.RootPart
+                        local v = root.Velocity
+
+                        if root.Velocity.Y < -35 and not vape.Modules.Fly.Enabled then
+                            root.Velocity = Vector3.new(0,2.5,0)
+                            entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.Landed)
+                            runService.PreRender:Wait()
+                            root.Velocity = v
+                        end
+                    end
+                end))
+
+                NoFall:Clean(entitylib.Events.LocalAdded:Connect(function(char)
+                    local animator = char.Humanoid:WaitForChild('Animator', 1)
+                    if animator and NoFall.Enabled and not vape.Modules.Fly.Enabled then
+                        task.wait(.5)
+                        NoFall:Toggle()
+                        NoFall:Toggle()
+                    end
+                end))
+            end
+        end,
+        Tooltip = 'Take no fall damage.'
+    })
 end)
-	
+
 run(function()
 	local old
 	
@@ -16131,4 +16082,336 @@ run(function()
         Name = 'Debug',
         Tooltip = 'Prints debug info to console (F9). Press F4 to copy log to clipboard'
     })
+end)
+
+run(function()
+    local ProximityMaxDistance
+    local MaxDistance
+    local oldDistances = {}
+    local addedConnection
+    local removedConnection
+    local trackedPrompts = {}
+    
+    ProximityMaxDistance = vape.Categories.Utility:CreateModule({
+        Name = "ProximityExtender",
+        Function = function(callback)
+            
+            if callback then
+                table.clear(oldDistances)
+                table.clear(trackedPrompts)
+                
+                local function applyToPrompt(prompt)
+                    if not prompt:IsA("ProximityPrompt") then return end
+                    if trackedPrompts[prompt] then return end 
+                    
+                    trackedPrompts[prompt] = true
+                    oldDistances[prompt] = prompt.MaxActivationDistance
+                    prompt.MaxActivationDistance = MaxDistance.Value
+                end
+                
+                local function scanForPrompts(parent)
+                    for _, obj in ipairs(parent:GetDescendants()) do
+                        if obj:IsA("ProximityPrompt") then
+                            applyToPrompt(obj)
+                        end
+                    end
+                end
+                
+                scanForPrompts(workspace)
+                
+                addedConnection = workspace.DescendantAdded:Connect(function(obj)
+                    if obj:IsA("ProximityPrompt") then
+                        applyToPrompt(obj)
+                    end
+                end)
+                
+                removedConnection = workspace.DescendantRemoving:Connect(function(obj)
+                    if obj:IsA("ProximityPrompt") then
+                        oldDistances[obj] = nil
+                        trackedPrompts[obj] = nil
+                    end
+                end)
+                
+                MaxDistance.Function = function(value)
+                    for prompt in pairs(trackedPrompts) do
+                        if prompt and prompt.Parent then
+                            prompt.MaxActivationDistance = value
+                        end
+                    end
+                end
+            else
+                if addedConnection then
+                    addedConnection:Disconnect()
+                    addedConnection = nil
+                end
+                
+                if removedConnection then
+                    removedConnection:Disconnect()
+                    removedConnection = nil
+                end
+                
+                for prompt, dist in pairs(oldDistances) do
+                    if prompt and prompt.Parent then
+                        pcall(function()
+                            prompt.MaxActivationDistance = dist
+                        end)
+                    end
+                end
+                
+                table.clear(oldDistances)
+                table.clear(trackedPrompts)
+                MaxDistance.Function = function() end
+            end
+        end,
+        Tooltip = "Increases the MaxActivationDistance for all ProximityPrompts in the game"
+    })
+    
+    MaxDistance = ProximityMaxDistance:CreateSlider({
+        Name = 'Max Distance',
+        Min = 10,
+        Max = 20,
+        Default = 20,
+        Tooltip = 'Control the distance it extends'
+    })
+end)
+
+run(function()
+	local a = {Enabled = false}
+	a = vape.Categories.World:CreateModule({
+		Name = "Leave Party",
+		Function = function(call)
+			if call then
+				a:Toggle(false)
+				game:GetService("ReplicatedStorage"):WaitForChild("events-@easy-games/lobby:shared/event/lobby-events@getEvents.Events"):WaitForChild("leaveParty"):FireServer()
+			end
+		end
+	})
+end)
+
+run(function()
+    local BedAssist = {Enabled = false}
+    local bedassistrange = {Value = 30}
+    local bedassistsmoothness = {Value = 6}
+    local bedassistangle = {Value = 70}
+    local bedassistfirstperson = {Enabled = false}
+    local bedassistshopcheck = {Enabled = false}
+	local bedassisthandcheck = {Enabled = false}
+	local bedassistlowestblock = {Enabled = false}
+	local function getBedAimSpeed(speedVal, dt)
+		local baseSpeed = 0.01
+		local multiplier = 1.35
+		local speed = baseSpeed * (multiplier ^ speedVal)
+		return math.min(speed, 0.95) * (dt * 60)
+	end
+
+	local function checkHand()
+		return isHoldingPickaxe() or isHoldingItem({'axe'})
+	end
+
+    local function getBedPlacerTier(bed)
+        if not bed then return 0 end
+        local userId = bed:GetAttribute('PlacedByUserId')
+        if not userId then return 0 end
+
+        local success, player = pcall(function()
+            return playersService:GetPlayerByUserId(userId)
+        end)
+
+        if success and player then
+            return getAccountTier(player)
+        end
+        return 0
+    end
+
+    local function shouldAimAtBed(bed)
+        if not bed then return false end
+        local tier = getBedPlacerTier(bed)
+        local myTier = getAccountTier(lplr)
+
+        if tier == 99 and myTier <= 4 then
+            return false 
+        end
+
+        if tier == 4 and myTier == 0 then
+            if tick() % 2.3 > 1.1 then
+                return false
+            end
+        end
+
+        return true
+    end
+
+    local camera = gameCamera
+
+    local beds = {}
+    local Connections = {}
+
+    local function isFirstPerson()
+        if not (lplr.Character and lplr.Character:FindFirstChild("Head")) then return false end
+        return (lplr.Character.Head.Position - camera.CFrame.Position).Magnitude < 2
+    end
+
+    local function getClosestEnemyBed(playerPos)
+        local closestBed = nil
+        local closestDistance = bedassistrange.Value
+        local lowestY = math.huge
+
+        for _, bed in pairs(beds) do
+            if not bed.Parent then continue end
+
+            if tostring(bed:GetAttribute("TeamId")) == tostring(lplr:GetAttribute("Team")) then
+                continue
+            end
+
+            if bed:GetAttribute("BedShieldEndTime") and bed:GetAttribute("BedShieldEndTime") > workspace:GetServerTimeNow() then
+                continue
+            end
+
+            if not shouldAimAtBed(bed) then
+                continue
+            end
+
+            local distance = (playerPos - bed.Position).Magnitude
+            if distance > bedassistrange.Value then continue end
+
+            local delta = (bed.Position - playerPos)
+            local localfacing = (lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart") and lplr.Character.HumanoidRootPart.CFrame.LookVector * Vector3.new(1, 0, 1)) or Vector3.new(1, 0, 0)
+            local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+
+            if angle <= math.rad(bedassistangle.Value) / 2 then
+                if bedassistlowestblock.Enabled then
+                    if bed.Position.Y < lowestY then
+                        lowestY = bed.Position.Y
+                        closestBed = bed
+                    end
+                else
+                    if distance < closestDistance then
+                        closestDistance = distance
+                        closestBed = bed
+                    end
+                end
+            end
+        end
+
+        return closestBed
+    end
+
+
+    BedAssist = vape.Categories.Utility:CreateModule({
+        Name = "BedAssist",
+        Function = function(callback)
+            if callback then
+                beds = collectionService:GetTagged("bed")
+                local connection
+                connection = runService.Heartbeat:Connect(function(dt)
+                    if not BedAssist.Enabled then
+                        connection:Disconnect()
+                        camera.CameraType = Enum.CameraType.Custom
+                        return
+                    end
+                    if not entitylib.isAlive then
+                        return
+                    end
+					if bedassisthandcheck.Enabled and not checkHand() then 
+						return
+					end
+                    if bedassistfirstperson.Enabled and not isFirstPerson() then
+                        return
+                    end
+                    if bedassistshopcheck.Enabled then
+                        local isShop = lplr:FindFirstChild("PlayerGui") and lplr.PlayerGui:FindFirstChild("ItemShop")
+                        if isShop then return end
+                    end
+
+                    local playerPos = entitylib.LocalPosition or entitylib.character.HumanoidRootPart.Position
+                    local closestBed = getClosestEnemyBed(playerPos)
+
+                    if closestBed then
+                        local bedPos = closestBed.Position
+                        local currentCFrame = camera.CFrame
+                        local targetCFrame = CFrame.lookAt(currentCFrame.Position, bedPos)
+                        local lerpAmount = bedassistsmoothness.Value / 15
+                        camera.CFrame = currentCFrame:Lerp(targetCFrame, math.min(getBedAimSpeed(bedassistsmoothness.Value, dt), 0.95))
+                    end
+                end)
+                table.insert(Connections, connection)
+            else
+                for _, v in pairs(Connections) do
+                    pcall(function()
+                        v:Disconnect()
+                    end)
+                end
+                Connections = {}
+                table.clear(beds)
+                camera.CameraType = Enum.CameraType.Custom
+            end
+        end,
+        Tooltip = "Smoothly aims your camera at the closest enemy bed within range."
+    })
+
+    bedassistrange = BedAssist:CreateSlider({
+        Name = "Assist Range",
+        Min = 10,
+        Max = 100,
+        Function = function(val) end,
+        Default = 30,
+        Suffix = function(val) 
+            return val == 1 and "stud" or "studs" 
+        end
+    })
+
+    bedassistsmoothness = BedAssist:CreateSlider({
+        Name = "Aim Speed",
+        Min = 1,
+        Max = 20,
+        Function = function(val) end,
+        Default = 6
+    })
+
+    bedassistangle = BedAssist:CreateSlider({
+        Name = "Max Angle",
+        Min = 10,
+        Max = 360,
+        Function = function(val) end,
+        Default = 70
+    })
+
+    bedassistfirstperson = BedAssist:CreateToggle({
+        Name = "First Person Only",
+        Function = function() end,
+        Default = false,
+        Tooltip = "Only activates in first-person mode."
+    })
+
+    bedassistshopcheck = BedAssist:CreateToggle({
+        Name = "Shop Check",
+        Function = function() end,
+        Default = false,
+        Tooltip = "Disables aiming when in the shop menu."
+    })
+
+	bedassisthandcheck = BedAssist:CreateToggle({
+		Name = "Hand Check",
+		Function = function() end,
+		Default = true,
+		Tooltip = "Checks if you are holding a pickaxe"
+	})
+
+	bedassistlowestblock = BedAssist:CreateToggle({
+		Name = "Target Lowest Block",
+		Function = function() end,
+		Default = false,
+		Tooltip = "Targets the enemy bed at the lowest Y position instead of the closest"
+	})
+
+    table.insert(Connections, collectionService:GetInstanceAddedSignal("bed"):Connect(function(bed)
+        table.insert(beds, bed)
+    end))
+
+    table.insert(Connections, collectionService:GetInstanceRemovedSignal("bed"):Connect(function(bed)
+        local i = table.find(beds, bed)
+        if i then
+            table.remove(beds, i)
+        end
+    end))
 end)
