@@ -115,6 +115,13 @@ if not shared.VapeIndependent then
 			end
 		end
 	end
+
+	-- Load game-specific category extensions before final GUI initialization.
+	if setthreadidentity then setthreadidentity(8) end
+	pcall(function()
+		loadstring(downloadFile('newvape/libraries/kits.lua'), 'kits')()
+	end)
+
 	if setthreadidentity then setthreadidentity(8) end
 	finishLoading()
 else
