@@ -3813,7 +3813,7 @@ run(function()
 		return bestPart or character:FindFirstChild('HumanoidRootPart')
 	end
 
-	ProjectileAimbot = vape.Categories.Blantant:CreateModule({
+	ProjectileAimbot = vape.Categories.Blatant:CreateModule({
 		Name = 'ProjectileAimbot',
 		Function = function(callback)
 			if callback then
@@ -4222,7 +4222,6 @@ run(function()
 		Tooltip = 'Bow/frost staff charge percentage (affects damage)'
 	})
 end)
-
 
 run(function()
 	local ProjectileAura
