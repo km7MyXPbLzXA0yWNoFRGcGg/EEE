@@ -3813,7 +3813,7 @@ run(function()
 		return bestPart or character:FindFirstChild('HumanoidRootPart')
 	end
 
-	ProjectileAimbot = vape.Categories.Blatant:CreateModule({
+	ProjectileAimbot = vape.Categories.Blantant:CreateModule({
 		Name = 'ProjectileAimbot',
 		Function = function(callback)
 			if callback then
