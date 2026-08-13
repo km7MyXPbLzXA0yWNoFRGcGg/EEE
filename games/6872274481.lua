@@ -5824,170 +5824,217 @@ run(function()
 	local Party
 	local Profile
 	local Users
+	local AlertDuration
+	local ClosetDetect
+
 	local blacklistedclans = {'gg', 'gg2', 'DV', 'DV2'}
 	local blacklisteduserids = {1502104539, 3826146717, 4531785383, 1049767300, 4926350670, 653085195, 184655415, 2752307430, 5087196317, 5744061325, 1536265275}
+
+	local blacklistedusernames = {}
+	local apiModNames = {}
+
+	local teamNameMap = { [1] = 'Blue', [2] = 'Orange', [3] = 'Pink', [4] = 'Yellow' }
 	local joined = {}
-	
-	local function getRole(plr, id)
-		local suc, res = pcall(function()
-			return plr:GetRankInGroup(id)
+	local detectedPlayers = {}
+	local processing = {}
+
+		local listsLoaded = false
+		task.spawn(function()
+			listsLoaded = true
 		end)
-		if not suc then
-			notif('StaffDetector', res, 30, 'alert')
+
+	getgenv()._aerov4_staffCounts = {spec=0, closet=0, mod=0, impossible=0}
+	local function refreshStaffCounts()
+		local c = {spec=0, closet=0, mod=0, impossible=0}
+		for _, data in pairs(detectedPlayers) do
+			local ct = data.checktype
+			if ct == 'spectator' then c.spec += 1
+			elseif ct == 'closet' then c.closet += 1
+			elseif ct == 'impossible_join' then c.impossible += 1
+			else c.mod += 1 end
 		end
-		return suc and res or 0
+		getgenv()._aerov4_staffCounts = c
+		vapeEvents.StaffCountUpdate:Fire()
 	end
-	
+
 	local function staffFunction(plr, checktype)
-		if not vape.Loaded then
-			repeat task.wait() until vape.Loaded
-		end
-	
-		notif('StaffDetector', 'Staff Detected ('..checktype..'): '..plr.Name..' ('..plr.UserId..')', 60, 'alert')
-		whitelist.customtags[plr.Name] = {{text = 'GAME STAFF', color = Color3.new(1, 0, 0)}}
-	
-		if Party.Enabled and not checktype:find('clan') then
-			bedwars.PartyController:leaveParty()
-		end
-	
-		if Mode.Value == 'Uninject' then
-			task.spawn(function()
-				vape:Uninject()
-			end)
-			game:GetService('StarterGui'):SetCore('SendNotification', {
-				Title = 'StaffDetector',
-				Text = 'Staff Detected ('..checktype..')\n'..plr.Name..' ('..plr.UserId..')',
-				Duration = 60,
-			})
-		elseif Mode.Value == 'Requeue' then
+		if detectedPlayers[plr.UserId] then return end
+		if not vape.Loaded then repeat task.wait() until vape.Loaded end
+		local duration = AlertDuration.Value
+		local playerName = plr.Name
+		local playerId = plr.UserId
+		detectedPlayers[playerId] = {name=playerName, checktype=checktype, detectedTime=tick()}
+		notif('StaffDetector', 'Staff Detected (' .. checktype .. '): ' .. playerName .. ' (' .. playerId .. ')', duration, 'alert')
+		whitelist.customtags[playerName] = {{text='GAME STAFF', color=Color3.new(1,0,0)}}
+		local isClanCheck = checktype:find('clan')
+		if Party.Enabled and not isClanCheck then pcall(bedwars.PartyController.leaveParty) end
+		local modeValue = Mode.Value
+		if modeValue == 'Uninject' then
+			task.spawn(function() vape:Uninject() end)
+			game:GetService('StarterGui'):SetCore('SendNotification', {Title='StaffDetector',Text='Staff Detected ('..checktype..')\n'..playerName..' ('..playerId..')',Duration=duration})
+		elseif modeValue == 'Requeue' then
+			pcall(bedwars.QueueController.leaveQueue)
 			bedwars.QueueController:joinQueue(store.queueType)
-		elseif Mode.Value == 'Profile' then
+		elseif modeValue == 'Profile' then
 			vape.Save = function() end
-			if vape.Profile ~= Profile.Value then
-				vape:Load(true, Profile.Value)
-			end
-		elseif Mode.Value == 'AutoConfig' then
-			local safe = {'AutoClicker', 'Reach', 'Sprint', 'HitFix', 'StaffDetector'}
+			if vape.Profile ~= Profile.Value then vape:Load(true, Profile.Value) end
+		elseif modeValue == 'AutoConfig' then
+			local safe = {AutoClicker=true,Reach=true,Sprint=true,HitFix=true,StaffDetector=true}
 			vape.Save = function() end
 			for i, v in vape.Modules do
-				if not (table.find(safe, i) or v.Category == 'Render') then
-					if v.Enabled then
-						v:Toggle()
-					end
+				if not (safe[i] or v.Category == 'Render') then
+					if v.Enabled then v:Toggle() end
 					v:SetBind('')
 				end
 			end
 		end
+		refreshStaffCounts()
 	end
-	
-	local function checkFriends(list)
-		for _, v in list do
-			if joined[v] then
-				return joined[v]
-			end
-		end
-		return nil
+
+	local function closetFunction(plr)
+		if detectedPlayers[plr.UserId] then return end
+		if not vape.Loaded then repeat task.wait() until vape.Loaded end
+		local teamNum = tonumber(plr:GetAttribute('Team'))
+		local team = teamNum and teamNameMap[teamNum] or 'Unknown'
+		detectedPlayers[plr.UserId] = {name=plr.Name, checktype='closet', detectedTime=tick()}
+		notif('StaffDetector', 'KNOWN CLOSETCHEATER: ' .. plr.Name .. ' | Team: ' .. team, AlertDuration.Value, 'alert')
+		whitelist.customtags[plr.Name] = {{text='CHEATER', color=Color3.fromRGB(255,140,0)}}
+		refreshStaffCounts()
 	end
-	
-	local function checkJoin(plr, connection)
-		if not plr:GetAttribute('Team') and plr:GetAttribute('Spectator') and not bedwars.Store:getState().Game.customMatch then
-			connection:Disconnect()
-			local tab, pages = {}, playersService:GetFriendsAsync(plr.UserId)
-			for _ = 1, 4 do
-				for _, v in pages:GetCurrentPage() do
-					table.insert(tab, v.Id)
+
+	local function checkCloset(plr)
+		if not ClosetDetect or not ClosetDetect.Enabled then return false end
+		if plr == lplr then return false end
+		if blacklistedusernames[plr.Name:lower()] then
+			task.spawn(function()
+				local waited = 0
+				while not plr:GetAttribute('Team') and waited < 10 do
+					task.wait(0.5) waited += 0.5
 				end
-				if pages.IsFinished then break end
-				pages:AdvanceToNextPageAsync()
-			end
-	
-			local friend = checkFriends(tab)
-			if not friend then
-				staffFunction(plr, 'impossible_join')
-				return true
-			else
-				notif('StaffDetector', string.format('Spectator %s joined from %s', plr.Name, friend), 20, 'warning')
-			end
+				closetFunction(plr)
+			end)
+			return true
 		end
+		return false
 	end
-	
+
 	local function playerAdded(plr)
 		joined[plr.UserId] = plr.Name
 		if plr == lplr then return end
-	
-		if table.find(blacklisteduserids, plr.UserId) or table.find(Users.ListEnabled, tostring(plr.UserId)) then
+		if processing[plr.UserId] then return end
+		processing[plr.UserId] = true
+
+		if not listsLoaded then
+			local t = tick()
+			repeat task.wait(0.1) until listsLoaded or (tick()-t > 3)
+		end
+
+		if checkCloset(plr) then processing[plr.UserId] = nil return end
+
+		if table.find(blacklisteduserids, plr.UserId) or (Users and table.find(Users.ListEnabled, tostring(plr.UserId))) then
 			staffFunction(plr, 'blacklisted_user')
-		elseif getRole(plr, 5774246) >= 100 then
-			staffFunction(plr, 'staff_role')
-		else
-			local connection
-			connection = plr:GetAttributeChangedSignal('Spectator'):Connect(function()
-				checkJoin(plr, connection)
-			end)
-			StaffDetector:Clean(connection)
-			if checkJoin(plr, connection) then
-				return
+			processing[plr.UserId] = nil
+			return
+		end
+
+		if apiModNames[plr.Name:lower()] then
+			staffFunction(plr, 'known_mod')
+			processing[plr.UserId] = nil
+			return
+		end
+
+		local function spectatorFunction(plr)
+			if detectedPlayers[plr.UserId] then return end
+			if not vape.Loaded then repeat task.wait() until vape.Loaded end
+			detectedPlayers[plr.UserId] = {name=plr.Name, checktype='spectator', detectedTime=tick()}
+			notif('StaffDetector', 'Spectator: '..plr.Name..' ('..tostring(plr.UserId)..') [Has friend in server]', AlertDuration.Value, 'warning')
+			refreshStaffCounts()
+		end
+
+		local function checkJoin()
+			if not plr:GetAttribute('Team') and plr:GetAttribute('Spectator') then
+				local hasFriend = false
+				for _, sp in ipairs(playersService:GetPlayers()) do
+					if sp ~= plr then
+						local ok, res = pcall(function() return plr:IsFriendsWith(sp.UserId) end)
+						if ok and res then hasFriend = true break end
+					end
+				end
+				if hasFriend then spectatorFunction(plr) else staffFunction(plr, 'impossible_join') end
+				return true
 			end
-	
-			if not plr:GetAttribute('ClanTag') then
-				plr:GetAttributeChangedSignal('ClanTag'):Wait()
+			return false
+		end
+
+		local spectatorConnection
+		spectatorConnection = plr:GetAttributeChangedSignal('Spectator'):Connect(function()
+			if checkJoin() then spectatorConnection:Disconnect() processing[plr.UserId] = nil end
+		end)
+		StaffDetector:Clean(spectatorConnection)
+
+		if checkJoin() then processing[plr.UserId] = nil return end
+
+		if Clans.Enabled then
+			local function checkClanTag()
+				local clanTag = plr:GetAttribute('ClanTag')
+				if clanTag and table.find(blacklistedclans, clanTag) then
+					staffFunction(plr, 'blacklisted_clan_' .. clanTag:lower())
+				end
 			end
-	
-			if table.find(blacklistedclans, plr:GetAttribute('ClanTag')) and vape.Loaded and Clans.Enabled then
-				connection:Disconnect()
-				staffFunction(plr, 'blacklisted_clan_'..plr:GetAttribute('ClanTag'):lower())
+			if plr:GetAttribute('ClanTag') then
+				checkClanTag()
+			else
+				local clanConnection
+				clanConnection = plr:GetAttributeChangedSignal('ClanTag'):Connect(function()
+					clanConnection:Disconnect()
+					checkClanTag()
+				end)
+				StaffDetector:Clean(clanConnection)
+				task.delay(5, function() if clanConnection then clanConnection:Disconnect() end end)
 			end
 		end
+
+		processing[plr.UserId] = nil
 	end
-	
+
+	local function playerRemoving(plr)
+		local userId = plr.UserId
+		joined[userId] = nil
+		processing[userId] = nil
+		if detectedPlayers[userId] then
+			local data = detectedPlayers[userId]
+			notif('StaffDetector', data.name .. ' (' .. data.checktype .. ') has left the server', AlertDuration.Value, 'warning')
+			if whitelist.customtags[data.name] then whitelist.customtags[data.name] = nil end
+			detectedPlayers[userId] = nil
+			refreshStaffCounts()
+		end
+	end
+
 	StaffDetector = vape.Categories.Utility:CreateModule({
 		Name = 'StaffDetector',
 		Function = function(callback)
 			if callback then
 				StaffDetector:Clean(playersService.PlayerAdded:Connect(playerAdded))
-				for _, v in playersService:GetPlayers() do
-					task.spawn(playerAdded, v)
-				end
+				StaffDetector:Clean(playersService.PlayerRemoving:Connect(playerRemoving))
+				for _, v in playersService:GetPlayers() do task.spawn(playerAdded, v) end
 			else
-				table.clear(joined)
+				table.clear(joined) table.clear(processing) table.clear(detectedPlayers)
+				refreshStaffCounts()
 			end
 		end,
 		Tooltip = 'Detects people with a staff rank ingame'
 	})
-	Mode = StaffDetector:CreateDropdown({
-		Name = 'Mode',
-		List = {'Uninject', 'Profile', 'Requeue', 'AutoConfig', 'Notify'},
-		Function = function(val)
-			if Profile.Object then
-				Profile.Object.Visible = val == 'Profile'
-			end
-		end
-	})
-	Clans = StaffDetector:CreateToggle({
-		Name = 'Blacklist clans',
-		Default = true
-	})
-	Party = StaffDetector:CreateToggle({
-		Name = 'Leave party'
-	})
-	Profile = StaffDetector:CreateTextBox({
-		Name = 'Profile',
-		Default = 'default',
-		Darker = true,
-		Visible = false
-	})
-	Users = StaffDetector:CreateTextList({
-		Name = 'Users',
-		Placeholder = 'player (userid)'
-	})
-	
-	task.spawn(function()
-		repeat task.wait(1) until vape.Loaded or vape.Loaded == nil
-		if vape.Loaded and not StaffDetector.Enabled then
-			StaffDetector:Toggle()
-		end
-	end)
+
+	Mode = StaffDetector:CreateDropdown({Name='Mode',List={'Uninject','Profile','Requeue','AutoConfig','Notify'},Function=function(val) if Profile.Object then Profile.Object.Visible = val=='Profile' end end})
+	AlertDuration = StaffDetector:CreateSlider({Name='Alert Duration',Min=5,Max=120,Default=60,Suffix='s',Tooltip='How long the alert notification stays on screen'})
+	Clans = StaffDetector:CreateToggle({Name='Blacklist clans',Default=true})
+	Party = StaffDetector:CreateToggle({Name='Leave party'})
+	ClosetDetect = StaffDetector:CreateToggle({Name='Known Cheaters',Default=true,Tooltip='Alerts when a known closet cheater joins your game'})
+	Profile = StaffDetector:CreateTextBox({Name='Profile',Default='default',Darker=true,Visible=false})
+	Users = StaffDetector:CreateTextList({Name='Users',Placeholder='player (userid)',Function=function() end})
+	task.defer(function() if Profile and Profile.Object then Profile.Object.Visible = (Mode.Value=='Profile') end end)
 end)
+
 	
 run(function()
 	TrapDisabler = vape.Categories.Utility:CreateModule({
@@ -10854,225 +10901,247 @@ run(function()
 end)
 
 run(function()
-	local KitRender
-    local activeConnections = {}
-    local kitLabels = {}
-    local updateDebounce = {}
-    local retryThread = nil
-    local playerMonitorThread = nil
-    local processedPlayers = {}
-    local UpdateRate = 0.2
-    KitRender = vape.Categories.Utility:CreateModule({
-        Name = "KitRender",
-        Function = function(callback)   
-            if callback then
-				repeat task.wait(0.08) until isrbxactive()
-                local function createKitLabel(parent, kitImage)
-                    if kitLabels[parent] then
-                        kitLabels[parent]:Destroy()
-                    end
-                    
-                    local kitLabel = Instance.new("ImageLabel")
-                    kitLabel.Name = "OnyxKitIcon"
-                    kitLabel.Size = UDim2.new(1, 0, 1, 0)
-                    kitLabel.Position = UDim2.new(1.1, 0, 0, 0)
-                    kitLabel.BackgroundTransparency = 1
-                    kitLabel.Image = kitImage
-                    kitLabel.Parent = parent
-                    
-                    kitLabels[parent] = kitLabel
-                    return kitLabel
-                end
-                
-                local function setupKitRender(obj)
-                    if obj.Name == "PlayerRender" and obj.Parent and obj.Parent.Parent and obj.Parent.Parent.Parent and obj.Parent.Parent.Parent.Parent and obj.Parent.Parent.Parent.Parent.Parent and obj.Parent.Parent.Parent.Parent.Parent.Name == "MatchDraftTeamCardRow" then
-                        local Rank = obj.Parent:FindFirstChild('3')
-                        if not Rank then return end
-                        
-                        local userId = string.match(obj.Image, "id=(%d+)")
-                        if not userId then return end
-                        
-                        local id = tonumber(userId)
-                        if not id then return end
-                        
-                        local plr = playersService:GetPlayerByUserId(id)
-                        if not plr then return end
-                        
-                        local loopKey = plr.UserId
-                        
-                        processedPlayers[loopKey] = true
-                        
-                        if activeConnections[loopKey] then
-                            activeConnections[loopKey]:Disconnect()
-                            activeConnections[loopKey] = nil
-                        end
-                        
-                        local function updateKit()
-                            if not KitRender.Enabled then return end
-                            if not Rank or not Rank.Parent then
-                                if activeConnections[loopKey] then
-                                    activeConnections[loopKey]:Disconnect()
-                                    activeConnections[loopKey] = nil
-                                end
-                                if kitLabels[Rank] then
-                                    kitLabels[Rank]:Destroy()
-                                    kitLabels[Rank] = nil
-                                end
-                                return
-                            end
-                            
-                            local kitName = plr:GetAttribute("PlayingAsKits")
-                            if not kitName then
-                                kitName = "none"
-                            end
-                            
-                            local render = bedwars.BedwarsKitMeta[kitName] or bedwars.BedwarsKitMeta.none
-                            
-                            if kitLabels[Rank] then
-                                kitLabels[Rank].Image = render.renderImage
-                            else
-                                createKitLabel(Rank, render.renderImage)
-                            end
-                        end
+    local KitDisplay
 
-                        local function RefreshKitCheck()
-                            if not KitRender.Enabled then return end
-                            if activeConnections[loopKey] then
-                                activeConnections[loopKey]:Disconnect()
-                                activeConnections[loopKey] = nil
-                            end							
-                            if kitLabels[Rank] then
-                                kitLabels[Rank]:Destroy()
-                                kitLabels[Rank] = nil
-                            end
-                            local kitName = plr:GetAttribute("PlayingAsKits")
-                            if not kitName then
-                                kitName = "none"
-                            end
-                            
-                            local render = bedwars.BedwarsKitMeta[kitName] or bedwars.BedwarsKitMeta.none
-                            
-                            if kitLabels[Rank] then
-                                kitLabels[Rank].Image = render.renderImage
-                            else
-                                createKitLabel(Rank, render.renderImage)
-                            end
-						end
+    local function getKitMeta(player)
+    	local kit = player:GetAttribute('PlayingAsKits') or player:GetAttribute('PlayingAsKit') or 'none'
+    	return bedwars.BedwarsKitMeta[kit] or bedwars.BedwarsKitMeta.none
+    end
 
-                        task.spawn(function()
-							while KitRender.Enabled do
-								RefreshKitCheck()
-								task.wait(UpdateRate)
-							end
-						end)
-                        
-                        local connection = plr:GetAttributeChangedSignal("PlayingAsKits"):Connect(function()
-                            local currentTick = tick()
-                            
-                            if not updateDebounce[loopKey] or (currentTick - updateDebounce[loopKey]) >= 0.1 then
-                                updateDebounce[loopKey] = currentTick
-                                updateKit()
-                            end
-                        end)
-                        
-                        activeConnections[loopKey] = connection
-                        KitRender:Clean(connection)
-                    end
-                end
-                
-                local function setupSquadsRender()
-                    local teams = lplr.PlayerGui:FindFirstChild("MatchDraftApp")
-                    if not teams then
-                        return false
-                    end
-                    
-                    task.wait(0.05)
-                    
-                    for _, obj in teams:GetDescendants() do
-                        if KitRender.Enabled then
-                            task.spawn(function()
-                                setupKitRender(obj)
-                            end)
-                        end
-                    end
-                    
-                    KitRender:Clean(teams.DescendantAdded:Connect(function(obj)
-                        if KitRender.Enabled then
-                            task.wait(0.01)
-                            setupKitRender(obj)
-                        end
-                    end))
-                    
-                    return true
-                end
-                
-                playerMonitorThread = task.spawn(function()
-                    while KitRender.Enabled do
-                        task.wait(0.5)
-                        
-                        local teams = lplr.PlayerGui:FindFirstChild("MatchDraftApp")
-                        if teams then
-                            for _, obj in teams:GetDescendants() do
-                                if obj.Name == "PlayerRender" and KitRender.Enabled then
-                                    local userId = string.match(obj.Image, "id=(%d+)")
-                                    if userId then
-                                        local id = tonumber(userId)
-                                        if id and not processedPlayers[id] then
-                                            task.spawn(function()
-                                                setupKitRender(obj)
-                                            end)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end)
-                
-                task.spawn(function()
-                    local success = setupSquadsRender()
-                    
-                    if not success then
-                        retryThread = task.spawn(function()
-                            while KitRender.Enabled do
-                                task.wait(0.5)
-                                if setupSquadsRender() then
-                                    break
-                                end
-                            end
-                        end)
-                    end
-                end)
-            else
-                if retryThread then
-                    task.cancel(retryThread)
-                    retryThread = nil
-                end
-                
-                if playerMonitorThread then
-                    task.cancel(playerMonitorThread)
-                    playerMonitorThread = nil
-                end
-                
-                for key, connection in pairs(activeConnections) do
-                    if connection then
-                        connection:Disconnect()
-                    end
-                    activeConnections[key] = nil
-                end
-                
-                for parent, label in pairs(kitLabels) do
-                    if label then
-                        label:Destroy()
-                    end
-                    kitLabels[parent] = nil
-                end
-                
-                table.clear(updateDebounce)
-                table.clear(processedPlayers)
-            end
-        end,
-        Tooltip = "Shows everyone's kit next to their rank during kit phase (squads ranked!)"
+    local function getPlayerFromDraft(render, name)
+    	local id = render and render:match('id=(%d+)')
+    	if id then
+    		local player = playersService:GetPlayerByUserId(tonumber(id))
+    		if player then
+    			return player
+    		end
+    	end
+
+    	for _, v in playersService:GetPlayers() do
+    		if render and render:find('id=' .. v.UserId, 1, true) then
+    			return v
+    		end
+
+    		if name and (v.Name == name or v.DisplayName == name or v:GetAttribute('DisguiseDisplayName') == name) then
+    			return v
+    		end
+
+    		local displayName
+    		pcall(function()
+    			displayName = bedwars.StreamerModeController:getDisplayName(v)
+    		end)
+    		if name and displayName == name then
+    			return v
+    		end
+    	end
+    	return nil
+    end
+
+    local waitForChild = function(start, ...)
+    	local parent = start
+    	for _, v in {...} do
+    		parent = parent and parent:WaitForChild(v, 5)
+    		if not parent then
+    			break
+    		end
+    	end
+    	return parent
+    end
+
+    local function getPlayerName(card)
+    	local textbar = card and card:FindFirstChild('TextBackgroundBar')
+    	local label = textbar and textbar:FindFirstChild('PlayerName') or card and card:FindFirstChild('PlayerName', true)
+    	return label and label.Text or ''
+    end
+
+    local function getDraftCard(container)
+    	if not container then
+    		return
+    	end
+    	return container.Name == 'MatchDraftPlayerCard' and container or container:FindFirstChild('MatchDraftPlayerCard', true)
+    end
+
+    local function callback5v5(v, plr)
+    	if not v then
+    		return
+    	end
+    	local render = v:FindFirstChild('PlayerRender', true)
+    	local player = plr or getPlayerFromDraft(render and render.Image or '', getPlayerName(v))
+
+    	if player then
+    		local kitImage = getKitMeta(player)
+    		local roact = v:FindFirstChild('KitImage')
+
+    		if not roact then
+    			roact = Instance.new('ImageLabel', v)
+    			roact.BackgroundTransparency = 1
+    			roact.AnchorPoint = Vector2.new(1, 0.5)
+    			roact.Position = UDim2.fromScale(1.05, 0.5)
+    			roact.Name = 'KitImage'
+    			roact.Size = UDim2.fromScale(1.5, 1.5)
+    			roact.ZIndex = 1
+    			roact.ImageTransparency = 0.4
+    			roact.SliceCenter = Rect.new(0, 0, 0, 0)
+    			roact.SliceScale = 1
+    			roact.ScaleType = Enum.ScaleType.Crop
+
+    			KitDisplay:Clean(roact)
+
+    			local ratio = Instance.new('UIAspectRatioConstraint', roact)
+    			ratio.Name = '1'
+    			ratio.AspectRatio = 1
+    			ratio.AspectType = Enum.AspectType.FitWithinMaxSize
+    			ratio.DominantAxis = Enum.DominantAxis.Width
+    		end
+
+    		roact.Image = kitImage.renderImage
+    		roact.Position = UDim2.fromScale(1.05, 0)
+    		tweenService:Create(roact, TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), {Position = UDim2.fromScale(1.05, 0.4)}):Play()
+
+    		local function update()
+    			kitImage = getKitMeta(player)
+    			roact.Image = kitImage.renderImage
+    		end
+
+    		KitDisplay:Clean(player:GetAttributeChangedSignal('PlayingAsKits'):Connect(update))
+    		KitDisplay:Clean(player:GetAttributeChangedSignal('PlayingAsKit'):Connect(update))
+    	end
+    end
+
+    local function callbacksquad(v)
+    	if not v then
+    		return
+    	end
+    	local render = v:FindFirstChild('PlayerRender', true)
+    	local player = render and getPlayerFromDraft(render.Image, '') or nil
+
+    	if player then
+    		local kitImage = getKitMeta(player)
+    		local Roact = v:FindFirstChild('Kitcvrender')
+
+    		if not Roact then
+    			local base = v:FindFirstChild('3') or v:WaitForChild('3', 5)
+    			if not base then
+    				return
+    			end
+    			Roact = base:Clone()
+    			Roact.Parent = v
+    			Roact.Name = 'Kitcvrender'
+    			KitDisplay:Clean(Roact)
+    		end
+
+    		Roact.Image = kitImage.renderImage
+
+    		KitDisplay:Clean(render:GetPropertyChangedSignal('Image'):Connect(function()
+    			local newplayer = getPlayerFromDraft(render.Image, '')
+    			if newplayer then
+    				player = newplayer
+    				kitImage = getKitMeta(player)
+    				Roact.Image = kitImage.renderImage
+    			end
+    		end))
+
+    		local function update()
+    			kitImage = getKitMeta(player)
+    			Roact.Image = kitImage.renderImage
+    		end
+
+    		KitDisplay:Clean(player:GetAttributeChangedSignal('PlayingAsKits'):Connect(update))
+    		KitDisplay:Clean(player:GetAttributeChangedSignal('PlayingAsKit'):Connect(update))
+    	end
+    end
+
+    local function setup5v5(DraftApp)
+    	local Background = DraftApp:FindFirstChild('DraftAppBackground')
+    	local BodyContainer = Background and Background:FindFirstChild('1') and Background['1']:FindFirstChild('BodyContainer')
+    	local hooked = false
+
+    	for i = 1, 2 do
+    		local dtc = BodyContainer and BodyContainer:FindFirstChild('Team' .. i .. 'Column')
+    		if dtc then
+    			hooked = true
+    			KitDisplay:Clean(dtc.ChildAdded:Connect(function(child)
+    				task.delay(0.2, function()
+    					if KitDisplay.Enabled then
+    						callback5v5(getDraftCard(child))
+    					end
+    				end)
+    			end))
+
+    			for _, v in dtc:GetChildren() do
+    				if v:IsA('Frame') then
+    					callback5v5(getDraftCard(v))
+    				end
+    			end
+    		end
+    	end
+
+    	if not hooked then
+    		for _, label in DraftApp:GetDescendants() do
+    			if label:IsA('TextLabel') and label.Name == 'PlayerName' then
+    				local container = label.Parent
+    				for _ = 1, 3 do
+    					container = container and container.Parent
+    				end
+    				if container then
+    					callback5v5(getDraftCard(container))
+    				end
+    			end
+    		end
+
+    		KitDisplay:Clean(DraftApp.DescendantAdded:Connect(function(child)
+    			if child:IsA('TextLabel') and child.Name == 'PlayerName' then
+    				task.delay(0.2, function()
+    					local container = child.Parent
+    					for _ = 1, 3 do
+    						container = container and container.Parent
+    					end
+    					if KitDisplay.Enabled and container then
+    						callback5v5(getDraftCard(container))
+    					end
+    				end)
+    			end
+    		end))
+    	end
+
+    	return hooked
+    end
+
+    local function setupSquad(DraftApp)
+    	local Background = DraftApp:FindFirstChild('DraftAppBackground')
+    	local BodyContainer = Background and Background:FindFirstChild('1') and Background['1']:FindFirstChild('BodyContainer')
+    	local TeamsColumn = BodyContainer and BodyContainer:FindFirstChild('TeamsColumn')
+    	if not TeamsColumn then
+    		return
+    	end
+
+    	for _, v: Instance in TeamsColumn:GetChildren() do
+    		if v:IsA('Frame') then
+    			local plrframe = waitForChild(v, '1', '2', '4')
+    			if plrframe then
+    				for _, plr in plrframe:GetChildren() do
+    					callbacksquad(plr)
+    				end
+
+    				KitDisplay:Clean(plrframe.ChildAdded:Connect(function(plr)
+    					KitDisplay:Toggle()
+    					KitDisplay:Toggle()
+    				end))
+    			end
+    		end
+    	end
+    end
+
+    KitDisplay = vape.Categories.Render:CreateModule({
+    	Name = 'Kit Display',
+    	Function = function(call)
+    		if call then
+    			local DraftApp = lplr.PlayerGui:WaitForChild('MatchDraftApp', 9e9)
+    			setup5v5(DraftApp)
+    			setupSquad(DraftApp)
+    		end
+    	end,
+    	Tooltip = 'Allows you to see the other opponent kits'
     })
 end)
 
@@ -16735,4 +16804,955 @@ run(function()
 		end,
 		Default = true
 	})
+end)
+
+run(function()
+	local ViewMatchHistory
+	ViewMatchHistory = vape.Categories.Utility:CreateModule({
+		Name = "ViewMatchHistory",
+		Function = function(callback)
+			if callback then
+				ViewMatchHistory:Toggle(false)
+				local d = nil
+				bedwars.MatchHistroyController:requestMatchHistory(lplr.Name):andThen(function(Data)
+					if Data then
+						bedwars.AppController:openApp({app = bedwars.MatchHistroyApp,appId = "MatchHistoryApp",},Data)
+					end
+				end)
+			else
+				return
+			end
+		end,
+		Tooltip = "matchhisory"
+	})																								
+end)
+
+run(function()
+    local Beekeeper
+    local CollectionToggle
+	local LimitToNet
+	local maxBeehiveLevel = 10
+    local maxedBeehives = {}
+    local maxedNotificationSent = {}
+    local CollectionDelay
+    local DelaySlider
+    local RangeSlider
+    local ESPToggle
+    local BeesESP
+    local BeesNotify
+    local BeesBackground
+    local BeesColor
+    local BeehiveESP
+    local ShowOtherBeehives
+    local BeehiveBackground
+    local BeehiveColor
+    local AutoDeposit
+    local DepositDelay
+    local DepositDelaySlider
+    local DepositRange
+    local ESPLimitToNet  
+    local collectionRunning = false
+    local depositRunning = false
+    local BeesFolder = Instance.new('Folder')
+    BeesFolder.Parent = vape.gui
+    local BeehiveFolder = Instance.new('Folder')
+    BeehiveFolder.Parent = vape.gui
+    local BeesReference = {}
+    local BeehiveReference = {}
+    local lastNotification = 0
+    local spawnQueue = {}
+    local notificationCooldown = 1
+
+    local function sendNotification(count)
+        notif("Bee ESP", string.format("%d bees spawned", count), 3)
+    end
+
+    local function processSpawnQueue()
+        if #spawnQueue > 0 then
+            local currentTime = tick()
+            if currentTime - lastNotification >= notificationCooldown then
+                sendNotification(#spawnQueue)
+                lastNotification = currentTime
+                spawnQueue = {}
+            else
+                task.delay(notificationCooldown - (currentTime - lastNotification), function()
+                    if #spawnQueue > 0 then
+                        sendNotification(#spawnQueue)
+                        spawnQueue = {}
+                    end
+                end)
+            end
+        end
+    end
+
+    local function getBeeIcon()
+        return bedwars.getIcon({itemType = 'bee'}, true)
+    end
+
+    local function AddedBee(v)
+        if BeesReference[v] then return end
+        local model = v.Parent
+        if model then
+            if model.Name:find("TamedBee") or model:FindFirstChild("TamedBee") then
+                return 
+            end
+            
+            if model:GetAttribute("IsTamed") or model:GetAttribute("Tamed") then
+                return 
+            end
+            
+            for _, tag in pairs(collectionService:GetTags(model)) do
+                if tag:lower():find("tamed") then
+                    return 
+                end
+            end
+        end
+        
+        local billboard = Instance.new('BillboardGui')
+        billboard.Parent = BeesFolder
+        billboard.Name = 'bee'
+        billboard.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
+        billboard.Size = UDim2.fromOffset(36, 36)
+        billboard.AlwaysOnTop = true
+        billboard.ClipsDescendants = false
+        billboard.Adornee = v
+        
+        local blur = addBlur(billboard)
+        blur.Visible = BeesBackground.Enabled
+        
+        local image = Instance.new('ImageLabel')
+        image.Size = UDim2.fromOffset(36, 36)
+        image.Position = UDim2.fromScale(0.5, 0.5)
+        image.AnchorPoint = Vector2.new(0.5, 0.5)
+        image.BackgroundColor3 = Color3.fromHSV(BeesColor.Hue, BeesColor.Sat, BeesColor.Value)
+        image.BackgroundTransparency = 1 - (BeesBackground.Enabled and BeesColor.Opacity or 0)
+        image.BorderSizePixel = 0
+        image.Image = getBeeIcon()
+        image.Parent = billboard
+        
+        local uicorner = Instance.new('UICorner')
+        uicorner.CornerRadius = UDim.new(0, 4)
+        uicorner.Parent = image
+        
+        BeesReference[v] = billboard
+        
+        if BeesNotify.Enabled then
+            table.insert(spawnQueue, {item = 'bee', time = tick()})
+            processSpawnQueue()
+        end
+    end
+
+    local function RemovedBee(v)
+        if BeesReference[v] then
+            BeesReference[v]:Destroy()
+            BeesReference[v] = nil
+        end
+    end
+
+    local function isMyBeehive(beehive)
+        if not beehive then return false end
+        local placedBy = beehive:GetAttribute("PlacedByUserId")
+        return placedBy and placedBy == lplr.UserId
+    end
+    
+    local function getBeehiveOwnerName(beehive)
+        if not beehive then return "Unknown" end
+        local placedBy = beehive:GetAttribute("PlacedByUserId")
+        if not placedBy then return "Unknown" end
+        
+        local player = game.Players:GetPlayerByUserId(placedBy)
+        if player then
+            return player.Name
+        end
+        
+        return "Player"
+    end
+
+    local function AddedBeehive(beehive)
+        local isOwn = isMyBeehive(beehive)
+        
+        if not isOwn and not (ShowOtherBeehives and ShowOtherBeehives.Enabled) then 
+            return 
+        end
+        
+        if BeehiveReference[beehive] then return end
+        
+        local level = beehive:GetAttribute("Level") or 0
+        local isMaxed = level >= maxBeehiveLevel and isOwn
+        
+        if isMaxed and isOwn then
+            maxedBeehives[beehive] = true
+        end
+        
+        local ownerName = isOwn and nil or getBeehiveOwnerName(beehive)
+        local hasOwnerName = ownerName ~= nil
+        
+        local billboard = Instance.new('BillboardGui')
+        billboard.Parent = BeehiveFolder
+        billboard.Name = 'beehive-esp'
+        billboard.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
+        billboard.Size = isMaxed and UDim2.fromOffset(90, 40) or (hasOwnerName and UDim2.fromOffset(120, 40) or UDim2.fromOffset(80, 30))
+        billboard.AlwaysOnTop = true
+        billboard.ClipsDescendants = false
+        billboard.Adornee = beehive
+        
+        local blur = addBlur(billboard)
+        blur.Visible = BeehiveBackground.Enabled
+        
+        local frame = Instance.new('Frame')
+        frame.Size = UDim2.fromScale(1, 1)
+        frame.BackgroundColor3 = isMaxed and Color3.fromRGB(255, 50, 50) or Color3.fromHSV(BeehiveColor.Hue, BeehiveColor.Sat, BeehiveColor.Value)
+        frame.BackgroundTransparency = 1 - (BeehiveBackground.Enabled and (isMaxed and 0.5 or BeehiveColor.Opacity) or 0)
+        frame.BorderSizePixel = 0
+        frame.Parent = billboard
+        
+        local uicorner = Instance.new('UICorner')
+        uicorner.CornerRadius = UDim.new(0, 6)
+        uicorner.Parent = frame
+        
+        if hasOwnerName then
+            local nameLabel = Instance.new('TextLabel')
+            nameLabel.Name = 'OwnerName'
+            nameLabel.Size = UDim2.new(1, 0, 0.4, 0)
+            nameLabel.Position = UDim2.new(0, 0, 0, -20)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Text = ownerName
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.TextSize = 12
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextStrokeTransparency = 0.5
+            nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+            nameLabel.Parent = billboard
+        end
+        
+        local homeImage = Instance.new('TextLabel')
+        homeImage.Size = UDim2.fromOffset(20, 20)
+        homeImage.Position = UDim2.new(0, 5, 0.5, 0)
+        homeImage.AnchorPoint = Vector2.new(0, 0.5)
+        homeImage.BackgroundTransparency = 1
+        homeImage.Text = isOwn and "🏠" or "🏘️"
+        homeImage.TextSize = 16
+        homeImage.Parent = frame
+        
+        local beeImage = Instance.new('ImageLabel')
+        beeImage.Size = UDim2.fromOffset(18, 18)
+        beeImage.Position = UDim2.new(0.5, -5, 0.5, 0)
+        beeImage.AnchorPoint = Vector2.new(0, 0.5)
+        beeImage.BackgroundTransparency = 1
+        beeImage.Image = getBeeIcon()
+        beeImage.Parent = frame
+        
+        local levelLabel = Instance.new('TextLabel')
+        levelLabel.Name = 'Level'
+        levelLabel.Size = UDim2.new(0, 25, 1, 0)
+        levelLabel.Position = UDim2.new(1, -30, 0, 0)
+        levelLabel.BackgroundTransparency = 1
+        levelLabel.Text = tostring(level)
+        levelLabel.TextColor3 = isMaxed and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(255, 255, 255)
+        levelLabel.TextSize = 16
+        levelLabel.Font = Enum.Font.GothamBold
+        levelLabel.TextStrokeTransparency = 0.5
+        levelLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+        levelLabel.Parent = frame
+        
+        if isMaxed and isOwn then
+            local maxText = Instance.new('TextLabel')
+            maxText.Name = 'MaxText'
+            maxText.Size = UDim2.new(1, 0, 0.4, 0)
+            maxText.Position = UDim2.new(0, 0, 0, hasOwnerName and -40 or -20)
+            maxText.BackgroundTransparency = 1
+            maxText.Text = "MAX"
+            maxText.TextColor3 = Color3.fromRGB(255, 50, 50)
+            maxText.TextSize = 12
+            maxText.Font = Enum.Font.GothamBold
+            maxText.TextStrokeTransparency = 0.5
+            maxText.TextStrokeColor3 = Color3.new(0, 0, 0)
+            maxText.Parent = billboard
+        end
+        
+        BeehiveReference[beehive] = {
+            billboard = billboard,
+            levelLabel = levelLabel,
+            beehive = beehive,
+            isMaxed = isMaxed,
+            isOwn = isOwn
+        }
+        
+        local function updateLevel()
+            local level = beehive:GetAttribute("Level") or 0
+            local isMaxed = level >= maxBeehiveLevel and isOwn
+            
+            if isMaxed and isOwn then
+                maxedBeehives[beehive] = true
+                
+                if not maxedNotificationSent[beehive] then
+                    notif("Bee Keeper", "Beehive is full (MAX)", 3)
+                    maxedNotificationSent[beehive] = true
+                end
+                
+                if BeehiveReference[beehive] and BeehiveReference[beehive].billboard then
+                    local maxText = BeehiveReference[beehive].billboard:FindFirstChild("MaxText")
+                    if not maxText then
+                        maxText = Instance.new('TextLabel')
+                        maxText.Name = 'MaxText'
+                        maxText.Size = UDim2.new(1, 0, 0.4, 0)
+                        maxText.Position = UDim2.new(0, 0, 0, hasOwnerName and -40 or -20)
+                        maxText.BackgroundTransparency = 1
+                        maxText.Text = "MAX"
+                        maxText.TextColor3 = Color3.fromRGB(255, 50, 50)
+                        maxText.TextSize = 12
+                        maxText.Font = Enum.Font.GothamBold
+                        maxText.TextStrokeTransparency = 0.5
+                        maxText.TextStrokeColor3 = Color3.new(0, 0, 0)
+                        maxText.Parent = BeehiveReference[beehive].billboard
+                    end
+                    
+                    local frame = BeehiveReference[beehive].billboard:FindFirstChild("Frame")
+                    if frame then
+                        frame.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+                        frame.BackgroundTransparency = 1 - (BeehiveBackground.Enabled and 0.5 or 0)
+                    end
+                end
+            else
+                if isOwn then
+                    maxedBeehives[beehive] = nil
+                    maxedNotificationSent[beehive] = nil
+                end
+                
+                if BeehiveReference[beehive] and BeehiveReference[beehive].billboard then
+                    local maxText = BeehiveReference[beehive].billboard:FindFirstChild("MaxText")
+                    if maxText then
+                        maxText:Destroy()
+                    end
+                    
+                    local frame = BeehiveReference[beehive].billboard:FindFirstChild("Frame")
+                    if frame then
+                        frame.BackgroundColor3 = Color3.fromHSV(BeehiveColor.Hue, BeehiveColor.Sat, BeehiveColor.Value)
+                        frame.BackgroundTransparency = 1 - (BeehiveBackground.Enabled and BeehiveColor.Opacity or 0)
+                    end
+                end
+            end
+            
+            if BeehiveReference[beehive] and BeehiveReference[beehive].levelLabel then
+                BeehiveReference[beehive].levelLabel.Text = tostring(level)
+            end
+            
+            if BeehiveReference[beehive] then
+                BeehiveReference[beehive].isMaxed = isMaxed
+            end
+        end
+        
+        updateLevel()
+        
+        if isOwn then
+            Beekeeper:Clean(beehive:GetAttributeChangedSignal("Level"):Connect(updateLevel))
+        else
+            Beekeeper:Clean(beehive:GetAttributeChangedSignal("Level"):Connect(function()
+                local level = beehive:GetAttribute("Level") or 0
+                if BeehiveReference[beehive] and BeehiveReference[beehive].levelLabel then
+                    BeehiveReference[beehive].levelLabel.Text = tostring(level)
+                end
+            end))
+        end
+    end
+
+
+    local function RemovedBeehive(beehive)
+        if BeehiveReference[beehive] then
+            BeehiveReference[beehive].billboard:Destroy()
+            BeehiveReference[beehive] = nil
+        end
+    end
+
+    local function setupBeesESP()
+        for _, v in collectionService:GetTagged('bee') do
+            if v:IsA("Model") and v.PrimaryPart then
+                if not v.Name:find("TamedBee") and not v:FindFirstChild("TamedBee") then
+                    AddedBee(v.PrimaryPart)
+                end
+            end
+        end
+
+        Beekeeper:Clean(collectionService:GetInstanceAddedSignal('bee'):Connect(function(v)
+            if v:IsA("Model") and v.PrimaryPart then
+                task.wait(0.1)
+                if not v.Name:find("TamedBee") and not v:FindFirstChild("TamedBee") then
+                    AddedBee(v.PrimaryPart)
+                end
+            end
+        end))
+
+        Beekeeper:Clean(collectionService:GetInstanceRemovedSignal('bee'):Connect(function(v)
+            if v.PrimaryPart then
+                RemovedBee(v.PrimaryPart)
+            end
+        end))
+        
+
+    end
+
+    local function setupBeehiveESP()
+        for _, beehive in collectionService:GetTagged('beehive') do
+            AddedBeehive(beehive)
+        end
+
+        Beekeeper:Clean(collectionService:GetInstanceAddedSignal('beehive'):Connect(function(beehive)
+            task.wait(0.1)
+            AddedBeehive(beehive)
+        end))
+
+        Beekeeper:Clean(collectionService:GetInstanceRemovedSignal('beehive'):Connect(function(beehive)
+            RemovedBeehive(beehive)
+        end))
+    end
+
+    local function isHoldingBeeNet()
+        if not store.hand or not store.hand.tool then return false end
+        return store.hand.tool.Name == 'bee_net' or store.hand.tool.Name == 'bee-net'
+    end
+
+    local function startCollection()
+        collectionRunning = true
+        task.spawn(function()
+            while collectionRunning and Beekeeper.Enabled and CollectionToggle.Enabled do
+                if not entitylib.isAlive then 
+                    task.wait(0.1) 
+                    continue 
+                end
+                
+                if LimitToNet.Enabled and not isHoldingBeeNet() then
+                    task.wait(0.5)
+                    continue
+                end
+                
+                local localPosition = entitylib.character.RootPart.Position
+                local range = RangeSlider.Value
+                local beesFound = false
+                
+                for _, v in collectionService:GetTagged('bee') do
+                    if not collectionRunning or not Beekeeper.Enabled or not CollectionToggle.Enabled then 
+                        break 
+                    end
+                    
+                    if LimitToNet.Enabled and not isHoldingBeeNet() then
+                        break
+                    end
+                    
+                    if v:IsA("Model") and v.PrimaryPart then
+                        local beePos = v.PrimaryPart.Position
+                        local distance = (localPosition - beePos).Magnitude
+                        
+                        if distance <= range then
+                            beesFound = true
+                            
+                            if CollectionDelay.Enabled and DelaySlider.Value > 0 then
+                                task.wait(DelaySlider.Value)
+                            end
+                            
+                            if LimitToNet.Enabled and not isHoldingBeeNet() then
+                                break
+                            end
+                            
+                            local beeId = v:GetAttribute('BeeId')
+                            if beeId then
+                                bedwars.Client:Get(remotes.BeePickup):SendToServer({beeId = beeId})
+                                task.wait(0.1)
+                            end
+                        end
+                    end
+                end
+                
+                if not beesFound then
+                    task.wait(0.2)
+                else
+                    task.wait(0.1)
+                end
+            end
+            collectionRunning = false
+        end)
+    end
+
+    local function startDeposit()
+        depositRunning = true
+        task.spawn(function()
+            while depositRunning and Beekeeper.Enabled and AutoDeposit.Enabled do
+                if not entitylib.isAlive then 
+                    task.wait(0.1) 
+                    continue 
+                end
+                
+                local currentTool = store.hand and store.hand.tool
+                if not currentTool or currentTool.Name ~= 'bee' then
+                    task.wait(0.1)
+                    continue
+                end
+                
+                local localPosition = entitylib.character.RootPart.Position
+                local range = DepositRange.Value
+                local depositedThisCycle = false
+                
+                local availableBeehives = {}
+                for _, beehive in collectionService:GetTagged('beehive') do
+                    if isMyBeehive(beehive) and not maxedBeehives[beehive] then
+                        local beehivePos = beehive.Position
+                        local distance = (localPosition - beehivePos).Magnitude
+                        
+                        if distance <= range then
+                            table.insert(availableBeehives, {
+                                beehive = beehive,
+                                distance = distance
+                            })
+                        end
+                    end
+                end
+                
+                table.sort(availableBeehives, function(a, b)
+                    return a.distance < b.distance
+                end)
+                
+                for _, beehiveData in ipairs(availableBeehives) do
+                    if not depositRunning or not Beekeeper.Enabled or not AutoDeposit.Enabled then 
+                        break 
+                    end
+                    local beehive = beehiveData.beehive
+                    if maxedBeehives[beehive] then
+                        continue
+                    end
+                    
+                    local prompt = beehive:FindFirstChildOfClass("ProximityPrompt")
+                    
+                    if prompt and prompt.Enabled then
+                        if DepositDelay.Enabled and DepositDelaySlider.Value > 0 then
+                            local originalDuration = prompt.HoldDuration
+                            prompt.HoldDuration = DepositDelaySlider.Value
+                            
+                            if fireproximityprompt then
+                                fireproximityprompt(prompt)
+                            else
+                                prompt:InputHoldBegin()
+                                task.wait(DepositDelaySlider.Value)
+                                prompt:InputHoldEnd()
+                            end
+                            
+                            task.wait(DepositDelaySlider.Value + 0.1)
+                            prompt.HoldDuration = originalDuration
+                        else
+                            if fireproximityprompt then
+                                fireproximityprompt(prompt)
+                            else
+                                prompt:InputHoldBegin()
+                                prompt:InputHoldEnd()
+                            end
+                            task.wait(0.1)
+                        end
+                        
+                        depositedThisCycle = true
+                        break 
+                    end
+                end
+                
+                if not depositedThisCycle and #availableBeehives > 0 then
+                    local allMaxed = true
+                    for _, beehiveData in ipairs(availableBeehives) do
+                        if not maxedBeehives[beehiveData.beehive] then
+                            allMaxed = false
+                            break
+                        end
+                    end
+                    
+                    if allMaxed then
+                        notif("Bee Keeper", "All nearby beehives are full", 3)
+                    end
+                end
+                
+                task.wait(depositedThisCycle and 0.3 or 0.2)
+            end
+            depositRunning = false
+        end)
+    end
+
+    Beekeeper = vape.Categories.Kits:CreateModule({
+        Name = 'AutoBeekeeper',
+        Function = function(callback)
+            if callback then
+                if ESPToggle.Enabled then
+                    if BeesESP.Enabled then
+                        setupBeesESP()
+                    end
+                    if BeehiveESP.Enabled then
+                        setupBeehiveESP()
+                    end
+                end
+                
+                if CollectionToggle.Enabled then
+                    startCollection()
+                end
+                
+                if AutoDeposit.Enabled then
+                    startDeposit()
+                end
+                
+                local _bkLastUpdate = 0
+                Beekeeper:Clean(runService.Heartbeat:Connect(function()
+                    if not ESPToggle.Enabled then return end
+                    local _now = tick()
+                    if _now - _bkLastUpdate < 0.2 then return end
+                    _bkLastUpdate = _now
+                    
+                    for v, billboard in pairs(BeesReference) do
+                        if not v or not v.Parent then
+                            RemovedBee(v)
+                            continue
+                        end
+
+                        local shouldShow = true
+
+                        if ESPLimitToNet.Enabled and not isHoldingBeeNet() then
+                            shouldShow = false
+                        end
+
+                        billboard.Enabled = shouldShow
+                    end
+                    
+                    for beehive, ref in pairs(BeehiveReference) do
+                        if not beehive or not beehive.Parent then
+                            RemovedBeehive(beehive)
+                            continue
+                        end
+
+                        local shouldShow = true
+
+                        if ESPLimitToNet.Enabled and not isHoldingBeeNet() then
+                            shouldShow = false
+                        end
+
+                        if ref.billboard then
+                            ref.billboard.Enabled = shouldShow
+                        end
+                    end
+                end))
+            else
+                collectionRunning = false
+                depositRunning = false
+                BeesFolder:ClearAllChildren()
+                BeehiveFolder:ClearAllChildren()
+                table.clear(BeesReference)
+                table.clear(BeehiveReference)
+                table.clear(spawnQueue)
+                lastNotification = 0
+            end
+        end,
+        Tooltip = 'Automatically collects bees and manages beehives'
+    })
+    
+    CollectionToggle = Beekeeper:CreateToggle({
+        Name = 'Auto Collect',
+        Default = true,
+        Tooltip = 'Automatically collect bees',
+        Function = function(callback)
+            if LimitToNet and LimitToNet.Object then LimitToNet.Object.Visible = callback end
+            if CollectionDelay and CollectionDelay.Object then CollectionDelay.Object.Visible = callback end
+            if DelaySlider and DelaySlider.Object then DelaySlider.Object.Visible = (callback and CollectionDelay.Enabled) end
+            if RangeSlider and RangeSlider.Object then RangeSlider.Object.Visible = callback end
+            
+            if callback and Beekeeper.Enabled then
+                startCollection()
+            else
+                collectionRunning = false
+            end
+        end
+    })
+    
+    LimitToNet = Beekeeper:CreateToggle({
+        Name = 'Limit to Net',
+        Default = false,
+        Tooltip = 'Only collect bees when holding bee net'
+    })
+    
+    CollectionDelay = Beekeeper:CreateToggle({
+        Name = 'Collection Delay',
+        Default = false,
+        Tooltip = 'Add delay before collecting bees',
+        Function = function(callback)
+            if DelaySlider and DelaySlider.Object then
+                DelaySlider.Object.Visible = callback
+            end
+        end
+    })
+    
+    DelaySlider = Beekeeper:CreateSlider({
+        Name = 'Delay',
+        Min = 0,
+        Max = 2,
+        Default = 0.5,
+        Decimal = 10,
+        Suffix = 's',
+        Tooltip = 'Delay in seconds before collecting'
+    })
+    
+    RangeSlider = Beekeeper:CreateSlider({
+        Name = 'Range',
+        Min = 1, 
+        Max = 30,
+        Default = 18,
+        Decimal = 1,
+        Suffix = ' studs',
+        Tooltip = 'Control distance you want to collect bees'
+    })
+    
+    ESPToggle = Beekeeper:CreateToggle({
+        Name = 'ESP',
+        Default = true,
+        Tooltip = 'ESP for bees and beehives',
+		Function = function(callback)
+			if BeesESP and BeesESP.Object then BeesESP.Object.Visible = callback end
+			if BeehiveESP and BeehiveESP.Object then BeehiveESP.Object.Visible = callback end
+			if ESPLimitToNet and ESPLimitToNet.Object then ESPLimitToNet.Object.Visible = callback end
+
+			if not callback then
+				if BeesNotify and BeesNotify.Object then BeesNotify.Object.Visible = false end
+				if BeesBackground and BeesBackground.Object then BeesBackground.Object.Visible = false end
+				if BeesColor and BeesColor.Object then BeesColor.Object.Visible = false end
+				if ShowOtherBeehives and ShowOtherBeehives.Object then ShowOtherBeehives.Object.Visible = false end
+				if BeehiveBackground and BeehiveBackground.Object then BeehiveBackground.Object.Visible = false end
+				if BeehiveColor and BeehiveColor.Object then BeehiveColor.Object.Visible = false end
+			else
+				if BeesESP and BeesESP.Enabled then
+					if BeesNotify and BeesNotify.Object then BeesNotify.Object.Visible = true end
+					if BeesBackground and BeesBackground.Object then BeesBackground.Object.Visible = true end
+					if BeesColor and BeesColor.Object then BeesColor.Object.Visible = BeesBackground.Enabled end
+				end
+				if BeehiveESP and BeehiveESP.Enabled then
+					if ShowOtherBeehives and ShowOtherBeehives.Object then ShowOtherBeehives.Object.Visible = true end
+					if BeehiveBackground and BeehiveBackground.Object then BeehiveBackground.Object.Visible = true end
+					if BeehiveColor and BeehiveColor.Object then BeehiveColor.Object.Visible = BeehiveBackground.Enabled end
+				end
+			end
+
+			if Beekeeper.Enabled then
+				if callback then
+					if BeesESP.Enabled then setupBeesESP() end
+					if BeehiveESP.Enabled then setupBeehiveESP() end
+				else
+					BeesFolder:ClearAllChildren()
+					BeehiveFolder:ClearAllChildren()
+					table.clear(BeesReference)
+					table.clear(BeehiveReference)
+				end
+			end
+		end
+    })
+    
+    ESPLimitToNet = Beekeeper:CreateToggle({
+        Name = 'Limit to Net',
+        Default = false,
+        Tooltip = 'Only show ESP when holding bee net'
+    })
+    
+    BeesESP = Beekeeper:CreateToggle({
+        Name = 'Bees',
+        Default = false,
+        Tooltip = 'Show bee locations',
+        Function = function(callback)
+            if BeesNotify and BeesNotify.Object then BeesNotify.Object.Visible = callback end
+            if BeesBackground and BeesBackground.Object then BeesBackground.Object.Visible = callback end
+            if BeesColor and BeesColor.Object then BeesColor.Object.Visible = callback end
+            
+            if Beekeeper.Enabled and ESPToggle.Enabled then
+                if callback then setupBeesESP() else
+                    BeesFolder:ClearAllChildren()
+                    table.clear(BeesReference)
+                end
+            end
+        end
+    })
+    
+    BeesNotify = Beekeeper:CreateToggle({
+        Name = 'Notify',
+        Default = false,
+        Tooltip = 'Get notifications when bees spawn'
+    })
+    
+    BeesBackground = Beekeeper:CreateToggle({
+        Name = 'Background',
+        Default = true,
+        Function = function(callback)
+            if BeesColor and BeesColor.Object then BeesColor.Object.Visible = callback end
+            for _, v in BeesReference do
+                if v and v:FindFirstChild("ImageLabel") then
+                    v.ImageLabel.BackgroundTransparency = 1 - (callback and BeesColor.Opacity or 0)
+                    if v:FindFirstChild("Blur") then
+                        v.Blur.Visible = callback
+                    end
+                end
+            end
+        end
+    })
+    
+	BeesColor = Beekeeper:CreateColorSlider({
+		Name = 'Background Color',
+		DefaultValue = 0,
+		DefaultOpacity = 0.5,
+		Function = function(hue, sat, val, opacity)
+			for _, v in BeesReference do
+				if v and v:FindFirstChild("ImageLabel") then
+					v.ImageLabel.BackgroundColor3 = Color3.fromHSV(hue, sat, val)
+					v.ImageLabel.BackgroundTransparency = 1 - opacity
+				end
+			end
+		end,
+		Darker = true
+	})
+    
+    BeehiveESP = Beekeeper:CreateToggle({
+        Name = 'Beehives',
+        Default = false,
+        Tooltip = 'Show your beehive locations with bee count',
+        Function = function(callback)
+            if ShowOtherBeehives and ShowOtherBeehives.Object then ShowOtherBeehives.Object.Visible = callback end
+            if BeehiveBackground and BeehiveBackground.Object then BeehiveBackground.Object.Visible = callback end
+            if BeehiveColor and BeehiveColor.Object then BeehiveColor.Object.Visible = callback end
+            
+            if Beekeeper.Enabled and ESPToggle.Enabled then
+                if callback then setupBeehiveESP() else
+                    BeehiveFolder:ClearAllChildren()
+                    table.clear(BeehiveReference)
+                end
+            end
+        end
+    })
+    
+    ShowOtherBeehives = Beekeeper:CreateToggle({
+        Name = 'Show Others',
+        Default = false,
+        Tooltip = 'Show other players\' beehives with their usernames',
+        Function = function(callback)
+            if Beekeeper.Enabled and ESPToggle.Enabled and BeehiveESP.Enabled then
+                BeehiveFolder:ClearAllChildren()
+                table.clear(BeehiveReference)
+                setupBeehiveESP()
+            end
+        end
+    })
+    
+    BeehiveBackground = Beekeeper:CreateToggle({
+        Name = 'Beehive Background',
+        Default = true,
+        Function = function(callback)
+            if BeehiveColor and BeehiveColor.Object then BeehiveColor.Object.Visible = callback end
+            for _, ref in BeehiveReference do
+                if ref and ref.billboard then
+                    local frame = ref.billboard:FindFirstChild("Frame")
+                    if frame then
+                        if ref.isMaxed and ref.isOwn then
+                            frame.BackgroundTransparency = 1 - (callback and 0.5 or 0)
+                        else
+                            frame.BackgroundTransparency = 1 - (callback and BeehiveColor.Opacity or 0)
+                        end
+                    end
+                    if ref.billboard:FindFirstChild("Blur") then
+                        ref.billboard.Blur.Visible = callback
+                    end
+                end
+            end
+        end
+    })
+    
+    BeehiveColor = Beekeeper:CreateColorSlider({
+        Name = 'Beehive Color',
+        DefaultValue = 0,
+        DefaultOpacity = 0.5,
+        Function = function(hue, sat, val, opacity)
+            for _, ref in BeehiveReference do
+                if ref and ref.billboard then
+                    local frame = ref.billboard:FindFirstChild("Frame")
+                    if frame and not (ref.isMaxed and ref.isOwn) then
+                        frame.BackgroundColor3 = Color3.fromHSV(hue, sat, val)
+                        frame.BackgroundTransparency = 1 - opacity
+                    end
+                end
+            end
+        end,
+        Darker = true
+    })
+    
+    AutoDeposit = Beekeeper:CreateToggle({
+        Name = 'Auto Deposit',
+        Default = false,
+        Tooltip = 'Automatically deposit bees into your beehives',
+		Function = function(callback)
+			if DepositDelay and DepositDelay.Object then DepositDelay.Object.Visible = callback end
+			if DepositDelaySlider and DepositDelaySlider.Object then DepositDelaySlider.Object.Visible = (callback and DepositDelay.Enabled) end
+			if DepositRange and DepositRange.Object then DepositRange.Object.Visible = callback end
+			
+			if not callback then
+				if DepositDelaySlider and DepositDelaySlider.Object then DepositDelaySlider.Object.Visible = false end
+			end
+
+			if callback and Beekeeper.Enabled then
+				startDeposit()
+			else
+				depositRunning = false
+			end
+		end
+    })
+    
+    DepositDelay = Beekeeper:CreateToggle({
+        Name = 'Deposit Delay',
+        Default = false,
+        Tooltip = 'Add delay before depositing bees',
+        Function = function(callback)
+            if DepositDelaySlider and DepositDelaySlider.Object then
+                DepositDelaySlider.Object.Visible = callback
+            end
+        end
+    })
+    
+    DepositDelaySlider = Beekeeper:CreateSlider({
+        Name = 'Deposit Delay',
+        Min = 0,
+        Max = 2,
+        Default = 0.5,
+        Decimal = 10,
+        Suffix = 's',
+        Tooltip = 'Delay in seconds before depositing'
+    })
+    
+    DepositRange = Beekeeper:CreateSlider({
+        Name = 'Deposit Range',
+        Min = 1,
+        Max = 15,
+        Default = 10,
+        Decimal = 1,
+        Suffix = ' studs',
+        Tooltip = 'Range to deposit bees into beehives'
+    })
+	task.defer(function()
+		if DelaySlider and DelaySlider.Object then DelaySlider.Object.Visible = CollectionDelay.Enabled end
+		if not ESPToggle.Enabled or not BeesESP.Enabled then
+			if BeesNotify and BeesNotify.Object then BeesNotify.Object.Visible = false end
+			if BeesBackground and BeesBackground.Object then BeesBackground.Object.Visible = false end
+			if BeesColor and BeesColor.Object then BeesColor.Object.Visible = false end
+		else
+			if BeesColor and BeesColor.Object then BeesColor.Object.Visible = BeesBackground.Enabled end
+		end
+
+		if not ESPToggle.Enabled or not BeehiveESP.Enabled then
+			if ShowOtherBeehives and ShowOtherBeehives.Object then ShowOtherBeehives.Object.Visible = false end
+			if BeehiveBackground and BeehiveBackground.Object then BeehiveBackground.Object.Visible = false end
+			if BeehiveColor and BeehiveColor.Object then BeehiveColor.Object.Visible = false end
+		else
+			if BeehiveColor and BeehiveColor.Object then BeehiveColor.Object.Visible = BeehiveBackground.Enabled end
+		end
+
+		if AutoDeposit and not AutoDeposit.Enabled then
+			if DepositDelay and DepositDelay.Object then DepositDelay.Object.Visible = false end
+			if DepositDelaySlider and DepositDelaySlider.Object then DepositDelaySlider.Object.Visible = false end
+			if DepositRange and DepositRange.Object then DepositRange.Object.Visible = false end
+		end
+
+		if DepositDelaySlider and DepositDelaySlider.Object then
+			DepositDelaySlider.Object.Visible = (AutoDeposit.Enabled and DepositDelay.Enabled)
+		end
+	end)
 end)
