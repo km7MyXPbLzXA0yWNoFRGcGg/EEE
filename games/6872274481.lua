@@ -1950,272 +1950,272 @@ run(function()
     })
 end)
 
-run(function()
-	local SilentAura
-	local ExtendedRange
-	local ExtendedRangeSlider
-	local WallCheck
-	local TargetMode
-	local Prediction
-	local HitRate
-	local MaxAngle
-	local silentAttackRemote
-	local lastHitTime = 0
-	local loopToken = 0
-	local BASE_RANGE = 13.8
-
-	task.spawn(function()
-		silentAttackRemote = bedwars.Client:Get(remotes.AttackEntity)
-	end)
-
-	local _saT4HitCount = {}
-	local _saT4HitTick = {}
-
-	local function fireSilentAttack(attackData)
-		if not silentAttackRemote then return end
-		local _atkPlr = playersService:GetPlayerFromCharacter(attackData.entityInstance)
-		if _atkPlr then
-			local targetTier = getAccountTier(_atkPlr)
-			if targetTier >= 99 then return end
-			if targetTier >= 4 and getAccountTier(lplr) == 0 then
-				local uid = _atkPlr.UserId
-				local now = tick()
-				if not _saT4HitTick[uid] or now - _saT4HitTick[uid] >= 10 then
-					_saT4HitTick[uid] = now
-					_saT4HitCount[uid] = 0
-				end
-				_saT4HitCount[uid] = (_saT4HitCount[uid] or 0) + 1
-				if _saT4HitCount[uid] > 32 then return end
-			end
-			if not select(2, whitelist:get(_atkPlr)) then return end
-		end
-		local selfpos = attackData.validate.selfPosition.value
-		local targetpos = attackData.validate.targetPosition.value
-		local actualDistance = (selfpos - targetpos).Magnitude
-		if actualDistance > 14.4 and actualDistance <= 30 then
-			local direction = (targetpos - selfpos).Unit
-			local moveDistance = math.min(actualDistance - 14.3, 8)
-			attackData.validate.selfPosition.value = selfpos + (direction * moveDistance)
-			local pullDistance = math.min(actualDistance - 14.3, 4)
-			attackData.validate.targetPosition.value = targetpos - (direction * pullDistance)
-			attackData.validate.raycast = attackData.validate.raycast or {}
-			attackData.validate.raycast.cameraPosition = attackData.validate.raycast.cameraPosition or {}
-			attackData.validate.raycast.cursorDirection = attackData.validate.raycast.cursorDirection or {}
-			local extendedOrigin = selfpos + (direction * math.min(actualDistance - 12, 15))
-			attackData.validate.raycast.cameraPosition.value = extendedOrigin
-			attackData.validate.raycast.cursorDirection.value = direction
-		end
-		return silentAttackRemote:SendToServer(attackData)
-	end
-
-	local function getMaxRange()
-		local base = BASE_RANGE
-		if ExtendedRange and ExtendedRange.Enabled and ExtendedRangeSlider then
-			base = base + ExtendedRangeSlider.Value
-		end
-		return base
-	end
-
-	local function canHitWithHitreg()
-		local currentTime = tick()
-		local hitreg = (HitRate and HitRate.Value or 34) + (math.random(-3, 3) / 10)
-		local delayBetweenHits = 10 / math.max(hitreg, 1)
-		if currentTime - lastHitTime >= delayBetweenHits then
-			lastHitTime = currentTime
-			return true
-		end
-		return false
-	end
-
-	local function getSilentTargetPosition(ent, dist)
-		local root = ent.RootPart
-		local targetPos = root.Position
-		local velocity = root.AssemblyLinearVelocity or root.Velocity or Vector3.zero
-		local predictionAmount = Prediction and Prediction.Value or 0
-
-		if predictionAmount > 0 then
-			targetPos += velocity * math.clamp((dist / 55) * predictionAmount, 0, 0.18)
-		end
-
-		return targetPos
-	end
-
-	local function gatherSilentTargets(selfpos, maxRange)
-		local targets = {}
-		local allEnts = entitylib.List
-		for i = 1, #allEnts do
-			local ent = allEnts[i]
-			if not ent.RootPart then continue end
-			if not ent.Targetable then continue end
-			if not ent.Health or ent.Health <= 0 then continue end
-			local dist = (ent.RootPart.Position - selfpos).Magnitude
-			if dist <= maxRange then
-				if WallCheck and WallCheck.Enabled and entitylib.Wallcheck(selfpos, ent.RootPart.Position, true) then continue end
+				run(function()
+					local SilentAura
+					local ExtendedRange
+					local ExtendedRangeSlider
+					local WallCheck
+					local TargetMode
+					local Prediction
+					local HitRate
+					local MaxAngle
+					local silentAttackRemote
+					local lastHitTime = 0
+					local loopToken = 0
+					local BASE_RANGE = 13.8
 				
-				-- Angle check
-				if MaxAngle and MaxAngle.Value < 360 then
-					local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
-					local delta = (ent.RootPart.Position - selfpos)
-					local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-					if angle > (math.rad(MaxAngle.Value) / 2) then continue end
-				end
+					task.spawn(function()
+						silentAttackRemote = bedwars.Client:Get(remotes.AttackEntity)
+					end)
 				
-				local health = ent.Health or 100
-				local velocity = ent.RootPart.AssemblyLinearVelocity or ent.RootPart.Velocity or Vector3.zero
-				table.insert(targets, {
-					ent = ent,
-					dist = dist,
-					health = health,
-					score = (dist * 1.35) + (health * 0.18) + math.min(velocity.Magnitude, 28) * 0.08
-				})
-			end
-		end
-		table.sort(targets, function(a, b)
-			local mode = TargetMode and TargetMode.Value or 'Smart'
-			if mode == 'Health' then
-				return a.health == b.health and a.dist < b.dist or a.health < b.health
-			end
-			if mode == 'Distance' then
-				return a.dist < b.dist
-			end
-			return a.score < b.score
-		end)
-		return targets
-	end
-
-	local function cleanupSilentAura()
-		loopToken += 1
-		lastHitTime = 0
-		store.KillauraTarget = nil
-		pcall(function()
-			if bedwars.SwordController then
-				bedwars.SwordController.disableSwingState = false
-				bedwars.SwordController.lastAttack = 0
-			end
-		end)
-	end
-
-	SilentAura = vape.Categories.Combat:CreateModule({
-		Name = 'SilentAura',
-		Function = function(callback)
-			cleanupSilentAura()
-			if not callback then return end
-			local activeToken = loopToken
-			task.spawn(function()
-				repeat
-					task.wait(1 / 60)
-					if not SilentAura.Enabled then break end
-					if activeToken ~= loopToken then break end
-
-					if (tick() - bedwars.SwordController.lastSwing) > 0.2 then continue end
-
-					local ok, open = pcall(function() return bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) end)
-					if ok and open then continue end
-
-					if tick() - store.silasAbilityTime < 2.2 then continue end
-					if tick() - store.terraStompTime < 0.7 then continue end
-					if tick() - store.terraKickTime < 0.5 then continue end
-
-					if store.hand.toolType ~= 'sword' then continue end
-					if bedwars.DaoController and bedwars.DaoController.chargingMaid then continue end
-
-					local sword = store.hand
-					if not sword or not sword.tool then continue end
-					local meta = bedwars.ItemMeta[sword.tool.Name]
-					if not meta or not meta.sword then continue end
-
-					if not entitylib.isAlive then continue end
-					local selfpos = entitylib.character.RootPart.Position
-
-					local maxRange = getMaxRange()
-					local targets = gatherSilentTargets(selfpos, maxRange)
-					if #targets == 0 then continue end
-
-					if not canHitWithHitreg() then continue end
-
-					local ent = targets[1].ent
-					if not ent.RootPart then continue end
-
-					local targetPos = getSilentTargetPosition(ent, targets[1].dist)
-					local camPos = gameCamera.CFrame.Position
-					local dir = (targetPos - camPos).Unit
-
-					fireSilentAttack({
-						weapon = sword.tool,
-						entityInstance = ent.Character,
-						chargedAttack = {chargeRatio = 0},
-						validate = {
-							raycast = {
-								cameraPosition = {value = camPos},
-								cursorDirection = {value = dir}
-							},
-							targetPosition = {value = targetPos},
-							selfPosition = {value = selfpos}
-						}
+					local _saT4HitCount = {}
+					local _saT4HitTick = {}
+				
+					local function fireSilentAttack(attackData)
+						if not silentAttackRemote then return end
+						local _atkPlr = playersService:GetPlayerFromCharacter(attackData.entityInstance)
+						if _atkPlr then
+							local targetTier = getAccountTier(_atkPlr)
+							if targetTier >= 99 then return end
+							if targetTier >= 4 and getAccountTier(lplr) == 0 then
+								local uid = _atkPlr.UserId
+								local now = tick()
+								if not _saT4HitTick[uid] or now - _saT4HitTick[uid] >= 10 then
+									_saT4HitTick[uid] = now
+									_saT4HitCount[uid] = 0
+								end
+								_saT4HitCount[uid] = (_saT4HitCount[uid] or 0) + 1
+								if _saT4HitCount[uid] > 32 then return end
+							end
+							if not select(2, whitelist:get(_atkPlr)) then return end
+						end
+						local selfpos = attackData.validate.selfPosition.value
+						local targetpos = attackData.validate.targetPosition.value
+						local actualDistance = (selfpos - targetpos).Magnitude
+						if actualDistance > 14.4 and actualDistance <= 30 then
+							local direction = (targetpos - selfpos).Unit
+							local moveDistance = math.min(actualDistance - 14.3, 8)
+							attackData.validate.selfPosition.value = selfpos + (direction * moveDistance)
+							local pullDistance = math.min(actualDistance - 14.3, 4)
+							attackData.validate.targetPosition.value = targetpos - (direction * pullDistance)
+							attackData.validate.raycast = attackData.validate.raycast or {}
+							attackData.validate.raycast.cameraPosition = attackData.validate.raycast.cameraPosition or {}
+							attackData.validate.raycast.cursorDirection = attackData.validate.raycast.cursorDirection or {}
+							local extendedOrigin = selfpos + (direction * math.min(actualDistance - 12, 15))
+							attackData.validate.raycast.cameraPosition.value = extendedOrigin
+							attackData.validate.raycast.cursorDirection.value = direction
+						end
+						return silentAttackRemote:SendToServer(attackData)
+					end
+				
+					local function getMaxRange()
+						local base = BASE_RANGE
+						if ExtendedRange and ExtendedRange.Enabled and ExtendedRangeSlider then
+							base = base + ExtendedRangeSlider.Value
+						end
+						return base
+					end
+				
+					local function canHitWithHitreg()
+						local currentTime = tick()
+						local hitreg = (HitRate and HitRate.Value or 34) + (math.random(-3, 3) / 10)
+						local delayBetweenHits = 10 / math.max(hitreg, 1)
+						if currentTime - lastHitTime >= delayBetweenHits then
+							lastHitTime = currentTime
+							return true
+						end
+						return false
+					end
+				
+					local function getSilentTargetPosition(ent, dist)
+						local root = ent.RootPart
+						local targetPos = root.Position
+						local velocity = root.AssemblyLinearVelocity or root.Velocity or Vector3.zero
+						local predictionAmount = Prediction and Prediction.Value or 0
+				
+						if predictionAmount > 0 then
+							targetPos += velocity * math.clamp((dist / 55) * predictionAmount, 0, 0.18)
+						end
+				
+						return targetPos
+					end
+				
+					local function gatherSilentTargets(selfpos, maxRange)
+						local targets = {}
+						local allEnts = entitylib.List
+						for i = 1, #allEnts do
+							local ent = allEnts[i]
+							if not ent.RootPart then continue end
+							if not ent.Targetable then continue end
+							if not ent.Health or ent.Health <= 0 then continue end
+							local dist = (ent.RootPart.Position - selfpos).Magnitude
+							if dist <= maxRange then
+								if WallCheck and WallCheck.Enabled and entitylib.Wallcheck(selfpos, ent.RootPart.Position, true) then continue end
+								
+								-- Angle check
+								if MaxAngle and MaxAngle.Value < 360 then
+									local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+									local delta = (ent.RootPart.Position - selfpos)
+									local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+									if angle > (math.rad(MaxAngle.Value) / 2) then continue end
+								end
+								
+								local health = ent.Health or 100
+								local velocity = ent.RootPart.AssemblyLinearVelocity or ent.RootPart.Velocity or Vector3.zero
+								table.insert(targets, {
+									ent = ent,
+									dist = dist,
+									health = health,
+									score = (dist * 1.35) + (health * 0.18) + math.min(velocity.Magnitude, 28) * 0.08
+								})
+							end
+						end
+						table.sort(targets, function(a, b)
+							local mode = TargetMode and TargetMode.Value or 'Smart'
+							if mode == 'Health' then
+								return a.health == b.health and a.dist < b.dist or a.health < b.health
+							end
+							if mode == 'Distance' then
+								return a.dist < b.dist
+							end
+							return a.score < b.score
+						end)
+						return targets
+					end
+				
+					local function cleanupSilentAura()
+						loopToken += 1
+						lastHitTime = 0
+						store.KillauraTarget = nil
+						pcall(function()
+							if bedwars.SwordController then
+								bedwars.SwordController.disableSwingState = false
+								bedwars.SwordController.lastAttack = 0
+							end
+						end)
+					end
+				
+					SilentAura = vape.Categories.Combat:CreateModule({
+						Name = 'SilentAura',
+						Function = function(callback)
+							cleanupSilentAura()
+							if not callback then return end
+							local activeToken = loopToken
+							task.spawn(function()
+								repeat
+									task.wait(1 / 60)
+									if not SilentAura.Enabled then break end
+									if activeToken ~= loopToken then break end
+				
+									if (tick() - bedwars.SwordController.lastSwing) > 0.2 then continue end
+				
+									local ok, open = pcall(function() return bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) end)
+									if ok and open then continue end
+				
+									if tick() - store.silasAbilityTime < 2.2 then continue end
+									if tick() - store.terraStompTime < 0.7 then continue end
+									if tick() - store.terraKickTime < 0.5 then continue end
+				
+									if store.hand.toolType ~= 'sword' then continue end
+									if bedwars.DaoController and bedwars.DaoController.chargingMaid then continue end
+				
+									local sword = store.hand
+									if not sword or not sword.tool then continue end
+									local meta = bedwars.ItemMeta[sword.tool.Name]
+									if not meta or not meta.sword then continue end
+				
+									if not entitylib.isAlive then continue end
+									local selfpos = entitylib.character.RootPart.Position
+				
+									local maxRange = getMaxRange()
+									local targets = gatherSilentTargets(selfpos, maxRange)
+									if #targets == 0 then continue end
+				
+									if not canHitWithHitreg() then continue end
+				
+									local ent = targets[1].ent
+									if not ent.RootPart then continue end
+				
+									local targetPos = getSilentTargetPosition(ent, targets[1].dist)
+									local camPos = gameCamera.CFrame.Position
+									local dir = (targetPos - camPos).Unit
+				
+									fireSilentAttack({
+										weapon = sword.tool,
+										entityInstance = ent.Character,
+										chargedAttack = {chargeRatio = 0},
+										validate = {
+											raycast = {
+												cameraPosition = {value = camPos},
+												cursorDirection = {value = dir}
+											},
+											targetPosition = {value = targetPos},
+											selfPosition = {value = selfpos}
+										}
+									})
+								until not SilentAura.Enabled or activeToken ~= loopToken
+							end)
+						end
 					})
-				until not SilentAura.Enabled or activeToken ~= loopToken
-			end)
-		end
-	})
-
-	WallCheck = SilentAura:CreateToggle({
-		Name = 'Wall Check',
-		Tooltip = 'Stops SilentAura from attacking targets behind walls.'
-	})
-
-	TargetMode = SilentAura:CreateDropdown({
-		Name = 'Target Mode',
-		List = {'Smart', 'Distance', 'Health'},
-		Tooltip = 'Smart balances distance, health and movement speed.'
-	})
-
-	Prediction = SilentAura:CreateSlider({
-		Name = 'Prediction',
-		Min = 0,
-		Max = 1,
-		Default = 0.35,
-		Decimal = 100,
-		Suffix = 'x'
-	})
-
-	HitRate = SilentAura:CreateSlider({
-		Name = 'Hit Rate',
-		Min = 28,
-		Max = 38,
-		Default = 34,
-		Decimal = 10,
-		Suffix = 'hz'
-	})
-
-	ExtendedRange = SilentAura:CreateToggle({
-		Name = 'Extended Range',
-		Function = function(callback)
-			if ExtendedRangeSlider then
-				ExtendedRangeSlider.Object.Visible = callback
-			end
-		end
-	})
-
-	ExtendedRangeSlider = SilentAura:CreateSlider({
-		Name = 'Extend Range',
-		Min = 1,
-		Max = 3,
-		Default = 1,
-		Darker = true,
-		Visible = false,
-		Suffix = function(val)
-			return val == 1 and 'stud' or 'studs'
-		end
-	})
-
-	MaxAngle = SilentAura:CreateSlider({
-		Name = 'Max Angle',
-		Min = 1,
-		Max = 360,
-		Default = 360,
-		Tooltip = 'Maximum angle to attack targets. 360 = all directions.'
-	})
-end)
+				
+					WallCheck = SilentAura:CreateToggle({
+						Name = 'Wall Check',
+						Tooltip = 'Stops SilentAura from attacking targets behind walls.'
+					})
+				
+					TargetMode = SilentAura:CreateDropdown({
+						Name = 'Target Mode',
+						List = {'Smart', 'Distance', 'Health'},
+						Tooltip = 'Smart balances distance, health and movement speed.'
+					})
+				
+					Prediction = SilentAura:CreateSlider({
+						Name = 'Prediction',
+						Min = 0,
+						Max = 1,
+						Default = 0.35,
+						Decimal = 100,
+						Suffix = 'x'
+					})
+				
+					HitRate = SilentAura:CreateSlider({
+						Name = 'Hit Rate',
+						Min = 28,
+						Max = 38,
+						Default = 34,
+						Decimal = 10,
+						Suffix = 'hz'
+					})
+				
+					ExtendedRange = SilentAura:CreateToggle({
+						Name = 'Extended Range',
+						Function = function(callback)
+							if ExtendedRangeSlider then
+								ExtendedRangeSlider.Object.Visible = callback
+							end
+						end
+					})
+				
+					ExtendedRangeSlider = SilentAura:CreateSlider({
+						Name = 'Extend Range',
+						Min = 1,
+						Max = 3,
+						Default = 1,
+						Darker = true,
+						Visible = false,
+						Suffix = function(val)
+							return val == 1 and 'stud' or 'studs'
+						end
+					})
+				
+					MaxAngle = SilentAura:CreateSlider({
+						Name = 'Max Angle',
+						Min = 1,
+						Max = 360,
+						Default = 360,
+						Tooltip = 'Maximum angle to attack targets. 360 = all directions.'
+					})
+				end)
 										
 run(function()
 	local Sprint
@@ -5323,51 +5323,131 @@ run(function()
 end)
 	
 run(function()
-	local shooting, old = false
+	local AutoShoot
+	local Targets
+	local Check
+	local Projectiles
+	local UseSophia
+	local UseWhim
+	local FireRate
+	local SwitchDelay
 	
-	local function getCrossbows()
-		local crossbows = {}
-		for i, v in store.inventory.hotbar do
-			if v.item and v.item.itemType:find('crossbow') and i ~= (store.inventory.hotbarSlot + 1) then table.insert(crossbows, i - 1) end
+	local FireDelays = {}
+	
+	local function getEntity()
+		local selfpos = entitylib.character.RootPart.Position
+		local plrs = entitylib.AllPosition({
+			Origin = selfpos,
+			Part = 'RootPart',
+			Range = 22,
+			Players = Targets.Players.Enabled,
+			NPCs = Targets.NPCs.Enabled,
+			Wallcheck = Targets.Walls.Enabled,
+			Limit = 10
+		})
+		if #plrs > 0 then
+			for _, ent in plrs do
+				local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+				local delta = (ent.RootPart.Position - selfpos) * Vector3.new(1, 0, 1)
+				local angle = localfacing.Magnitude > 0 and delta.Magnitude > 0 and math.acos(math.clamp(localfacing.Unit:Dot(delta.Unit), -1, 1)) or 0
+				if angle > (math.rad(120) / 2) then continue end
+				return ent
+			end
 		end
-		return crossbows
+		return nil
 	end
 	
-	vape.Categories.Utility:CreateModule({
+	AutoShoot = vape.Categories.Utility:CreateModule({
 		Name = 'AutoShoot',
 		Function = function(callback)
 			if callback then
-				old = bedwars.ProjectileController.createLocalProjectile
-				bedwars.ProjectileController.createLocalProjectile = function(...)
-					local source, data, proj = ...
-					if source and (proj == 'arrow' or proj == 'fireball') and not shooting then
-						task.spawn(function()
-							local bows = getCrossbows()
-							if #bows > 0 then
-								shooting = true
-								task.wait(0.15)
-								local selected = store.inventory.hotbarSlot
-								for _, v in getCrossbows() do
-									if hotbarSwitch(v) then
-										task.wait(0.05)
-										mouse1click()
-										task.wait(0.05)
+				repeat
+					if entitylib.isAlive and store.hand.toolType == 'sword' and (tick() - bedwars.SwordController.lastSwing) < 0.2 then
+						local hotbar = store.hand.tool and getHotbar(store.hand.tool) or nil
+						for _, data in getProjectiles(Projectiles.ListEnabled, UseSophia.Enabled, UseWhim.Enabled) do
+							local item, ammo, projectile, itemMeta = unpack(data)
+							if (FireDelays[item.itemType] or 0) < tick() then
+								local ent = getEntity()
+								if (not Check.Enabled or ent) and hotbarSwitch(getHotbar(item.tool)) then
+									task.wait(store.ping.total or 0)
+									local meta = bedwars.ProjectileMeta[projectile]
+									local projSpeed, gravity = meta.launchVelocity, meta.gravitationalAcceleration or 196.2
+									local calc = ent and prediction.SolveTrajectory(entitylib.character.RootPart.Position, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, rayCheck, ent.Humanoid.FloorMaterial == Enum.Material.Air or math.abs(ent.RootPart.Velocity.Y) > 0.01, ent.RootPart.Position, ent.RootPart, nil, true) or nil
+									if calc then
+										local shootPosition = (CFrame.new(entitylib.character.RootPart.Position, calc) * CFrame.new(Vector3.new(-bedwars.BowConstantsTable.RelX, -bedwars.BowConstantsTable.RelY, -bedwars.BowConstantsTable.RelZ))).Position
+										local aim = prediction.SolveTrajectory(shootPosition, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, rayCheck, ent.Humanoid.FloorMaterial == Enum.Material.Air or math.abs(ent.RootPart.Velocity.Y) > 0.01, ent.RootPart.Position, ent.RootPart, nil, true) or calc
+										local dir, id = CFrame.lookAt(shootPosition, aim).LookVector, httpService:GenerateGUID(true)
+										bedwars.Handler:Get('ProjectileFire'):Fire('CallServerAsync',
+											item.tool,
+											ammo,
+											projectile,
+											shootPosition,
+											entitylib.character.RootPart.Position,
+											dir * projSpeed,
+											id,
+											{
+												drawDurationSeconds = 1,
+												shotId = httpService:GenerateGUID(false),
+											},
+											workspace:GetServerTimeNow() - 0.045
+										):andThen(function(res)
+											if res then
+												res.Parent = replicatedStorage
+											end
+										end)
+										prediction.trackShot(ent.RootPart)
+										FireDelays[item.itemType] = tick() + (itemMeta.fireDelaySec + FireRate:GetRandomValue())
+										task.wait(SwitchDelay.Value)
 									end
 								end
-								hotbarSwitch(selected)
-								shooting = false
 							end
-						end)
+						end
+						hotbarSwitch(hotbar)
 					end
-					return old(...)
-				end
-			else
-				bedwars.ProjectileController.createLocalProjectile = old
+					task.wait(0.1)
+				until not AutoShoot.Enabled
 			end
 		end,
 		Tooltip = 'Automatically crossbow macro\'s'
 	})
-	
+	Targets = AutoShoot:CreateTargets({Players = true})
+	Check = AutoShoot:CreateToggle({
+		Name = 'Target check',
+		Default = true,
+		Function = function(callback)
+			if Targets.Object then
+				Targets.Object.Visible = callback
+			end
+		end
+	})
+	Projectiles = AutoShoot:CreateTextList({
+		Name = 'Projectiles',
+		Default = {'arrow', 'snowball'}
+	})
+	UseSophia = AutoShoot:CreateToggle({
+		Name = 'Use sophia',
+		Tooltip = 'Also shoots sophia\'s frost staff, swapping it out of mist mode on its own'
+	})
+	UseWhim = AutoShoot:CreateToggle({
+		Name = 'Use whim',
+		Tooltip = 'Also casts whim\'s magic book, follows whatever element you have cycled'
+	})
+	FireRate = AutoShoot:CreateTwoSlider({
+		Name = 'Fire Rate',
+		Min = 0,
+		Max = 1,
+		DefaultMin = 0.05,
+		DefaultMax = 0.12,
+		Decimal = 100
+	})
+	SwitchDelay = AutoShoot:CreateSlider({
+		Name = 'Switch Delay',
+		Min = 0,
+		Max = 1,
+		Decimal = 100,
+		Suffix = 'seconds',
+		Default = 0.02
+	})
 end)
 	
 run(function()
