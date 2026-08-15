@@ -10198,160 +10198,78 @@ run(function()
 end)
 
 run(function()
-    local aim = 0.158
-    local tnt = 0.0045
-    local aunchself = 0.395
-
-    local defaultaim = 0.4
-    local defaulttnt = 0.2
-    local defaultself = 0.4
-
-	local A
-	local T
-	local L
-	local C
-	local AJ
-    local function getWorldFolder()
-        local Map = workspace:WaitForChild("Map", math.huge)
-        local Worlds = Map:WaitForChild("Worlds", math.huge)
-        if not Worlds then return nil end
-
-        return Worlds:GetChildren()[1] 
-    end
-
-    local function setCannonSpeeds(blocksFolder, aimDur, tntDur, selfDur)
-        for _, v in ipairs(blocksFolder:GetChildren()) do 
-            if v:IsA("BasePart") and v.Name == "cannon" then
-                local AimPrompt = v:FindFirstChild("AimPrompt")
-                local FirePrompt = v:FindFirstChild("FirePrompt")
-                local LaunchSelfPrompt = v:FindFirstChild("LaunchSelfPrompt")
-                if AimPrompt and FirePrompt and LaunchSelfPrompt then
-                    AimPrompt.HoldDuration = aimDur
-                    FirePrompt.HoldDuration = tntDur
-                    LaunchSelfPrompt.HoldDuration = selfDur
-                end
-            end
-        end
-    end
-
-    BetterDavey = vape.Categories.Blatant:CreateModule({
-        Name = "BetterDavey",
-        Tooltip = "makes u look better with davey",
-        Function = function(callback) 
-            local worldFolder = getWorldFolder()
-            if not worldFolder then return end
-            local blocks = worldFolder:WaitForChild("Blocks")
-
-            if callback then
-                setCannonSpeeds(blocks, aim, tnt, aunchself)
-
-               BetterDavey:Clean( blocks.ChildAdded:Connect(function(child)
-                    if child:IsA("BasePart") and child.Name == "cannon" and BetterDavey.Enabled then
-                        local AimPrompt = child:WaitForChild("AimPrompt")
-                        local FirePrompt = child:WaitForChild("FirePrompt")
-                        local LaunchSelfPrompt = child:WaitForChild("LaunchSelfPrompt")
-
-                        AimPrompt.HoldDuration = aim
-                        FirePrompt.HoldDuration = tnt
-                        LaunchSelfPrompt.HoldDuration = aunchself
-					BetterDavey:Clean(LaunchSelfPrompt.Triggered:Connect(function(p)
-						local humanoid = entitylib.character.Humanoid
-					
-						if not humanoid then return end
-					
-						if Speed.Enabled and Fly.Enabled then
-							Fly:Toggle(false)
-							task.wait(0.025)
-							Speed:Toggle(false)
-						elseif Speed.Enabled then
-							Speed:Toggle(false)
-						elseif Fly.Enabled then
-							Fly:Toggle(false)
-						end
-
-						bedwars.breakBlock(child)
-
-						if AJ.Enabled then
-							if humanoid:GetState() ~= Enum.HumanoidStateType.Jumping then
-								humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-							end
-						end
-					end))
-                    end
-                end))
-            else
-                setCannonSpeeds(blocks, defaultaim, defaulttnt, defaultself)
-            end
-        end
-    })
-	AJ = BetterDavey:CreateToggle({
-		Name = "Auto-Jump",
-		Default = true																																																						
-	})																																																					
-	A = BetterDavey:CreateSlider({
-		Name = "Aim",
-		Visible = false,
-		Min = 0,
-		Max = 1,
-		Default = aim,
-		Decimal = 10,
-		Function = function(v)
-			aim = v
-            local worldFolder = getWorldFolder()
-            if not worldFolder then return end
-            local blocks = worldFolder:WaitForChild("Blocks")
-            setCannonSpeeds(blocks, aim, tnt, aunchself)
-		end
-	})
-
-	T = BetterDavey:CreateSlider({
-		Name = "Tnt",
-		Visible = false,
-		Min = 0,
-		Max = 1,
-		Default = tnt,
-		Decimal = 10,
-		Function = function(v)
-			tnt = v
-            local worldFolder = getWorldFolder()
-            if not worldFolder then return end
-            local blocks = worldFolder:WaitForChild("Blocks")
-            setCannonSpeeds(blocks, aim, tnt, aunchself)
-		end
-	})
-
-	L = BetterDavey:CreateSlider({
-		Name = "Launch Self",
-		Visible = false,
-		Min = 0,
-		Max = 1,
-		Default = aunchself,
-		Decimal = 10,
-		Function = function(v)
-			aunchself = v
-            local worldFolder = getWorldFolder()
-            if not worldFolder then return end
-            local blocks = worldFolder:WaitForChild("Blocks")
-            setCannonSpeeds(blocks, aim, tnt, aunchself)
-		end
-	})
-
-	C = BetterDavey:CreateToggle({
-		Name = "Customize",
-		Default = false,
-		Function = function(v)
-			A.Object.Visible = v
-			T.Object.Visible = v
-			L.Object.Visible = v
-			if not v then
-				aim = 0.158
-				tnt = 0.0045
-				aunchself = 0.395
+	local AutoDavey
+	local Switch
+	local Break
+	local Jump
+	local LimitItem
+	
+	local old, oldAim
+	
+	local function canBreak()
+		if not LimitItem.Enabled then return true end
+		local itemmeta = store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name]
+		return itemmeta ~= nil and itemmeta.breakBlock ~= nil
+	end
+	
+	local function breakCannon(block)
+		local deadline = tick() + 0.6 + (store.ping.total or 0)
+	
+		repeat
+			if not AutoDavey.Enabled or not entitylib.isAlive or not canBreak() then return end
+			if (block.Position - entitylib.character.RootPart.Position).Magnitude > 30 then return end
+			bedwars.breakBlock(block, true, true, nil, Switch.Enabled)
+			task.wait(0.1)
+		until not block.Parent or tick() > deadline
+	end
+	
+	AutoDavey = vape.Categories.Minigames:CreateModule({
+		Name = 'AutoDavey',
+		Function = function(callback)
+			if callback then
+				oldAim = bedwars.CannonController.startAiming
+				bedwars.CannonController.startAiming = function(self, block, ...)
+					local call = oldAim(self, block, ...)
+	
+					if Break.Enabled and block and block.Parent and entitylib.isAlive and canBreak() and getBlockHits(block, block.Position) > 1 then
+						task.spawn(breakCannon, block)
+					end
+	
+					return call
+				end
+	
+				old = bedwars.CannonHandController.launchSelf
+				bedwars.CannonHandController.launchSelf = function(self, block, ...)
+					if Break.Enabled and block and block.Parent and entitylib.isAlive and (block.Position - entitylib.character.RootPart.Position).Magnitude <= 30 and canBreak() then
+						task.spawn(breakCannon, block)
+					end
+	
+					local call = old(self, block, ...)
+	
+					if Jump.Enabled and entitylib.isAlive then
+						entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+					end
+					return call
+				end
+			else
+				bedwars.CannonHandController.launchSelf = old
+				bedwars.CannonController.startAiming = oldAim
 			end
-		end
+		end,
+		Tooltip = 'Automatically breaks cannon/jump on launch'
 	})
+	Jump = AutoDavey:CreateToggle({Name = 'Jump on impact'})
+	
+	Break = AutoDavey:CreateToggle({Name = 'Break on impact'})
+	
+	Switch = AutoDavey:CreateToggle({Name = 'Legit switch'})
+	
+	LimitItem = AutoDavey:CreateToggle({
+		Name = 'Limit to items',
+		Tooltip = 'Only breaks when tools are held'
+	})
+end) 
 
-end)
 run(function()
     local HitFix
 	local PingBased
