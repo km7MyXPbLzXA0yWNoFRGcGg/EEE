@@ -11107,6 +11107,36 @@ run(function()
     	Tooltip = 'Allows you to see the other opponent kits'
     })
 end)
+run(function()
+    local LegacyAnimation
+
+    local function isFirstPerson()
+        local char = lplr.Character
+        if not char then return false end
+        local head = char:FindFirstChild('Head')
+        if not head then return false end
+        return head.LocalTransparencyModifier == 1
+    end
+
+    LegacyAnimation = vape.Categories.Render:CreateModule({
+        Name = 'LegacyAnimation',
+        Function = function(callback)
+            if callback then
+                local frameCounter = 0
+                workspace:SetAttribute('RbxLegacyAnimationBlending', not isFirstPerson())
+                LegacyAnimation:Clean(runService.Heartbeat:Connect(function()
+                    frameCounter = frameCounter + 1
+                    if frameCounter % 6 == 0 then
+                        workspace:SetAttribute('RbxLegacyAnimationBlending', not isFirstPerson())
+                    end
+                end))
+            else
+                workspace:SetAttribute('RbxLegacyAnimationBlending', false)
+            end
+        end,
+        Tooltip = 'Enables legacy animation blending in 3rd person only'
+    })
+end)
 
 run(function()
 	local AutoHonor
