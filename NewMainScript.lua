@@ -34,6 +34,9 @@ local function wipeFolder(path)
 	end
 end
 
+-- Load the AntiLag module
+local antilag = loadstring(downloadFile('newvape/antilag.lua'), 'antilag')()
+
 for _, folder in {'newvape', 'newvape/games', 'newvape/profiles', 'newvape/assets', 'newvape/libraries', 'newvape/guis'} do
 	if not isfolder(folder) then
 		makefolder(folder)
