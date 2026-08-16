@@ -2815,7 +2815,7 @@ run(function()
 	local Limit
 	local LegitAura
 	local Particles, Boxes = {}, {}
-	local anims, AnimTween, armC0 = vape.Libraries.auraanims, tick()
+	local anims, AnimDelay, AnimTween, armC0 = vape.Libraries.auraanims, tick()
 	local swordEffectFunction, swordEffectController
 	local scytheAnimationFunction, scytheAnimationController
 	local animationHooksInstalled = false
@@ -2961,6 +2961,23 @@ run(function()
 								if not Attacking then
 									Attacking = true
 									store.KillauraTarget = v
+									if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
+										-- This affects only the local visual effect.  Keep it no faster
+										-- than the existing attack scheduler so it cannot burst/double.
+										local swingDelay = math.max(
+											meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0,
+											10 / AttackRate.Value
+										)
+										AnimDelay = tick() + swingDelay
+										bedwars.SwordController:playSwordEffect(meta, false)
+										if meta.displayName:find(' Scythe') then
+											bedwars.ScytheController:playLocalAnimation()
+										end
+
+										if vape.ThreadFix then
+											setthreadidentity(8)
+										end
+									end
 								end
 
 								if delta.Magnitude > AttackRange.Value then continue end
@@ -2973,8 +2990,6 @@ run(function()
 									if nextAttack <= tick() then
 										nextAttack = tick() + attackInterval
 									end
-									-- The game plays its own sword effect after this request.  Triggering
-									-- another local effect here created a visible double swing.
 									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 									local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 									bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
@@ -3303,6 +3318,7 @@ run(function()
 		Tooltip = 'Only attacks while swinging manually'
 	})
 end)
+
 
 run(function()
 	local Value
