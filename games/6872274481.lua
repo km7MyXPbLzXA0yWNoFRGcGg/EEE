@@ -2962,13 +2962,7 @@ run(function()
 									Attacking = true
 									store.KillauraTarget = v
 									if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
-										-- This affects only the local visual effect.  Keep it no faster
-										-- than the existing attack scheduler so it cannot burst/double.
-										local swingDelay = math.max(
-											meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0,
-											10 / AttackRate.Value
-										)
-										AnimDelay = tick() + swingDelay
+										AnimDelay = tick() + (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0.11)
 										bedwars.SwordController:playSwordEffect(meta, false)
 										if meta.displayName:find(' Scythe') then
 											bedwars.ScytheController:playLocalAnimation()
@@ -3318,7 +3312,6 @@ run(function()
 		Tooltip = 'Only attacks while swinging manually'
 	})
 end)
-
 
 run(function()
 	local Value
