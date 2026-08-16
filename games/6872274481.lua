@@ -2795,7 +2795,6 @@ run(function()
 	local AttackRange
 	local ChargeTime
 	local UpdateRate
-	local AttackRate
 	local AngleSlider
 	local MaxTargets
 	local Mouse
@@ -2923,9 +2922,6 @@ run(function()
 					end)
 				end
 
-				-- Schedule attack attempts independently from target scanning.  This keeps
-				-- the requested rate stable instead of letting frame/update timing drift it.
-				local nextAttack = tick()
 				repeat
 					local attacked, sword, meta = {}, getAttackData()
 					Attacking = false
@@ -2962,7 +2958,13 @@ run(function()
 									Attacking = true
 									store.KillauraTarget = v
 									if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
-										AnimDelay = tick() + (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0.11)
+										-- This affects only the local visual effect.  Keep it at the
+										-- normal 34-per-10-second cadence so it cannot burst/double.
+										local swingDelay = math.max(
+											meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0,
+											10 / 34
+										)
+										AnimDelay = tick() + swingDelay
 										bedwars.SwordController:playSwordEffect(meta, false)
 										if meta.displayName:find(' Scythe') then
 											bedwars.ScytheController:playLocalAnimation()
@@ -2977,13 +2979,7 @@ run(function()
 								if delta.Magnitude > AttackRange.Value then continue end
 
 								local actualRoot = v.Character.PrimaryPart
-								if actualRoot and tick() >= nextAttack then
-									local attackInterval = 10 / AttackRate.Value
-									nextAttack += attackInterval
-									-- Do not burst after a period with no valid target.
-									if nextAttack <= tick() then
-										nextAttack = tick() + attackInterval
-									end
+								if actualRoot then
 									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 									local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 									bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
@@ -3108,13 +3104,6 @@ run(function()
 		Max = 120,
 		Default = 60,
 		Suffix = 'hz'
-	})
-	AttackRate = Killaura:CreateSlider({
-		Name = 'Attack attempts per 10s',
-		Min = 1,
-		Max = 34,
-		Default = 34,
-		Suffix = ' hits'
 	})
 	MaxTargets = Killaura:CreateSlider({
 		Name = 'Max targets',
@@ -3312,6 +3301,7 @@ run(function()
 		Tooltip = 'Only attacks while swinging manually'
 	})
 end)
+
 
 run(function()
 	local Value
