@@ -4071,10 +4071,9 @@ run(function()
 			nametag.BackgroundTransparency = Background.Value
 			nametag.BorderSizePixel = 0
 			nametag.Visible = false
-			nametag.Text = Distance.Enabled and entitylib.isAlive and string.format(Strings[ent], math.floor((entitylib.character.RootPart.Position - ent.RootPart.Position).Magnitude)) or Strings[ent]
+			nametag.Text = Strings[ent]
 			nametag.TextColor3 = entitylib.getEntityColor(ent) or Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
 			nametag.RichText = true
-	
 			nametag.Parent = Folder
 			Reference[ent] = nametag
 		end,
@@ -4166,15 +4165,17 @@ run(function()
 					nametag.EnchantIcon.Image = store.enchants[ent.Player]:async() or ''
 				end
 	
-				local text = Distance.Enabled and entitylib.isAlive and string.format(Strings[ent], math.floor((entitylib.character.RootPart.Position - ent.RootPart.Position).Magnitude)) or Strings[ent]
-				local size = getfontsize(removeTags(text), nametag.TextSize, nametag.FontFace, Vector2.new(100000, 100000))
+				local size = getfontsize(removeTags(Strings[ent]), nametag.TextSize, nametag.FontFace, Vector2.new(100000, 100000))
 				nametag.Size = UDim2.fromOffset(size.X + 8, size.Y + 7)
-				nametag.Text = text
+				nametag.Text = Strings[ent]
 			end
 		end,
 		Drawing = function(ent)
 			local nametag = Reference[ent]
 			if nametag then
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
 				Sizes[ent] = nil
 				Strings[ent] = ent.Player and whitelist:tag(ent.Player, true)..(DisplayName.Enabled and ent.Player.DisplayName or ent.Player.Name) or ent.Character.Name
 	
@@ -4460,7 +4461,7 @@ run(function()
 		Visible = false
 	})
 end)
-	
+
 run(function()
 	local StorageESP
 	local List
