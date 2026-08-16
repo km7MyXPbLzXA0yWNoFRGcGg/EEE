@@ -2973,18 +2973,8 @@ run(function()
 									if nextAttack <= tick() then
 										nextAttack = tick() + attackInterval
 									end
-									-- Play the local effect only for this scheduled attack.  Running it
-									-- from the scan loop caused multiple visual swings per hit.
-									if not Swing.Enabled and not LegitAura.Enabled then
-										bedwars.SwordController:playSwordEffect(meta, false)
-										if meta.displayName:find(' Scythe') then
-											bedwars.ScytheController:playLocalAnimation()
-										end
-
-										if vape.ThreadFix then
-											setthreadidentity(8)
-										end
-									end
+									-- The game plays its own sword effect after this request.  Triggering
+									-- another local effect here created a visible double swing.
 									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 									local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 									bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
@@ -3314,7 +3304,6 @@ run(function()
 	})
 end)
 
-	
 run(function()
 	local Value
 	local CameraDir
