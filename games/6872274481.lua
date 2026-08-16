@@ -11869,8 +11869,13 @@ run(function()
 		oldLaunchSelf = bedwars.CannonHandController.launchSelf
 
 		local function replaceSound()
-			for _, v in ipairs(workspace.SoundPool:GetChildren()) do
-				if v:IsA("Sound") and v.SoundId == "rbxassetid://7121064180" then v:Destroy() end
+			-- SoundPool is no longer always parented directly to Workspace.  Its
+			-- absence must not prevent the original cannon action from running.
+			local soundPool = workspace:FindFirstChild("SoundPool", true)
+			if soundPool then
+				for _, v in ipairs(soundPool:GetChildren()) do
+					if v:IsA("Sound") and v.SoundId == "rbxassetid://7121064180" then v:Destroy() end
+				end
 			end
 			local key = CANNON_SOUND_NAMES[CURRENT_SKIN_TYPE] or CANNON_SOUND_NAMES.Nightmare
 			if bedwars.SoundManager and bedwars.SoundList and bedwars.SoundList[key] then
@@ -11878,8 +11883,14 @@ run(function()
 			end
 		end
 
-		bedwars.CannonHandController.fireCannon = function(...) replaceSound(); return oldFireCannon(...) end
-		bedwars.CannonHandController.launchSelf = function(...) replaceSound(); return oldLaunchSelf(...) end
+		bedwars.CannonHandController.fireCannon = function(...)
+			pcall(replaceSound)
+			return oldFireCannon(...)
+		end
+		bedwars.CannonHandController.launchSelf = function(...)
+			pcall(replaceSound)
+			return oldLaunchSelf(...)
+		end
 	end
 
 	local function unhookCannonSounds()
@@ -12101,7 +12112,7 @@ run(function()
 		end
 	end)
 end)
-
+	
 run(function()
 	local AutoAdetunde
 	local AdetundeUtil, AdetundeUpgradeMeta
