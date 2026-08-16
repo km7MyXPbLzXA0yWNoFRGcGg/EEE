@@ -2815,9 +2815,6 @@ run(function()
 	local LegitAura
 	local Particles, Boxes = {}, {}
 	local anims, AnimDelay, AnimTween, armC0 = vape.Libraries.auraanims, tick()
-	local swordEffectFunction, swordEffectController
-	local scytheAnimationFunction, scytheAnimationController
-	local animationHooksInstalled = false
 	local AttackRemote = {FireServer = function() end}
 	task.spawn(function()
 		AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
@@ -2872,17 +2869,8 @@ run(function()
 							}
 						}
 					}
-					-- Save the live controller upvalues.  Restoring to bedwars.Knit is not
-					-- reliable: the game can use a different controller after an update.
-					swordEffectFunction = oldSwing or bedwars.SwordController.playSwordEffect
-					scytheAnimationFunction = bedwars.ScytheController.playLocalAnimation
-					local _, currentSwordEffectController = debug.getupvalue(swordEffectFunction, 6)
-					local _, currentScytheAnimationController = debug.getupvalue(scytheAnimationFunction, 3)
-					swordEffectController = currentSwordEffectController
-					scytheAnimationController = currentScytheAnimationController
-					debug.setupvalue(swordEffectFunction, 6, fake)
-					debug.setupvalue(scytheAnimationFunction, 3, fake)
-					animationHooksInstalled = true
+					debug.setupvalue(oldSwing or bedwars.SwordController.playSwordEffect, 6, fake)
+					debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, fake)
 
 					task.spawn(function()
 						local started = false
@@ -2943,7 +2931,6 @@ run(function()
 							local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
 
 							for _, v in plrs do
-								if not Killaura.Enabled then break end
 								local delta = (v.RootPart.Position - selfpos)
 								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
 								if angle > (math.rad(AngleSlider.Value) / 2) then continue end
@@ -2958,13 +2945,7 @@ run(function()
 									Attacking = true
 									store.KillauraTarget = v
 									if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
-										-- This affects only the local visual effect.  Keep it at the
-										-- normal 34-per-10-second cadence so it cannot burst/double.
-										local swingDelay = math.max(
-											meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0,
-											10 / 34
-										)
-										AnimDelay = tick() + swingDelay
+										AnimDelay = tick() + (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0.11)
 										bedwars.SwordController:playSwordEffect(meta, false)
 										if meta.displayName:find(' Scythe') then
 											bedwars.ScytheController:playLocalAnimation()
@@ -3022,17 +3003,9 @@ run(function()
 						entitylib.character.RootPart.CFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(vec.X, entitylib.character.RootPart.Position.Y + 0.001, vec.Z))
 					end
 
-					-- Keep the attack loop at the selected cadence even while targets are
-					-- present.  The old target-count delay could override Update rate and
-					-- leave sword swings waiting long enough to be dropped.
-					task.wait(1 / math.clamp(UpdateRate.Value, 1, 120))
+					task.wait(#attacked > 0 and #attacked * 0.02 or 1 / UpdateRate.Value)
 				until not Killaura.Enabled
 			else
-				-- Stop the running attack/animation tasks before restoring normal input.
-				Attacking = false
-				if AnimTween then
-					AnimTween:Cancel()
-				end
 				store.KillauraTarget = nil
 				for _, v in Boxes do
 					v.Adornee = nil
@@ -3045,15 +3018,9 @@ run(function()
 						lplr.PlayerGui.MobileUI['2'].Visible = true
 					end)
 				end
-				if animationHooksInstalled and swordEffectFunction then
-					pcall(debug.setupvalue, swordEffectFunction, 6, swordEffectController)
-				end
-				if animationHooksInstalled and scytheAnimationFunction then
-					pcall(debug.setupvalue, scytheAnimationFunction, 3, scytheAnimationController)
-				end
-				swordEffectFunction, swordEffectController = nil, nil
-				scytheAnimationFunction, scytheAnimationController = nil, nil
-				animationHooksInstalled = false
+				debug.setupvalue(oldSwing or bedwars.SwordController.playSwordEffect, 6, bedwars.Knit)
+				debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, bedwars.Knit)
+				Attacking = false
 				if armC0 then
 					AnimTween = tweenService:Create(gameCamera.Viewmodel.RightHand.RightWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
 						C0 = armC0
@@ -3301,7 +3268,6 @@ run(function()
 		Tooltip = 'Only attacks while swinging manually'
 	})
 end)
-
 
 run(function()
 	local Value
