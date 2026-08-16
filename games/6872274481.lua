@@ -19638,3 +19638,154 @@ run(function()
     })
 end)
 
+run(function()
+    local AutoZeno
+    local Targets
+    local TargetMode
+    local Limit
+    local AutoShockWave
+    local ShockwaveRange
+    local UseStrike
+    local UseStorm
+    local Range
+    local Delay
+
+    local function getAttackData()
+    	if Limit.Enabled then
+    		local tool = (store.hand.tool and store.hand.tool.Name:find('wizard_staff')) and store.hand.tool or nil
+    		return tool, tool and getHotbar(tool) or nil, tool and (tonumber(tool.Name:sub(#tool.Name, #tool.Name)) or 1) or nil
+    	end
+
+    	for i, v in store.inventory.inventory.items do
+    		if v.itemType:find('wizard_staff') then
+    			switchItem(v, 0)
+    			return v, i, tonumber(v.itemType:sub(#v.itemType, #v.itemType)) or 1
+    		end
+    	end
+
+    	return
+    end
+
+    AutoZeno = vape.Categories.Kits:CreateModule({
+    	Name = 'Auto Zeno',
+    	Function = function(call)
+    		if call then
+    			repeat
+    				if entitylib.isAlive then
+    					local staff, __, level = getAttackData()
+
+    					if staff then
+    						local localPosition = entitylib.character.RootPart.Position
+    						local ent = entitylib.EntityPosition({
+    							Origin = localPosition,
+    							Range = (Range.Value < 6 and AutoShockWave.Enabled and 7) or Range.Value,
+    							Part = 'RootPart',
+    							Players = Targets.Players.Enabled,
+    							NPCs = Targets.NPCs.Enabled,
+    							Sort = sortmethods[TargetMode.Value],
+    						})
+
+    						if ent then
+    							if AutoShockWave.Enabled and level > 2 then
+    								if
+    									bedwars.AbilityController:canUseAbility('SHOCKWAVE')
+    									and (localPosition - ent.RootPart.Position).Magnitude <= ShockwaveRange.Value
+    								then
+    									bedwars.AbilityController:useAbility('SHOCKWAVE', newproxy(true), {
+    										target = CFrame.lookAt(localPosition, ent.RootPart.Position).LookVector,
+    									})
+    									task.wait(Delay.Value)
+    								end
+    							end
+
+    							if UseStrike.Enabled and bedwars.AbilityController:canUseAbility('LIGHTNING_STRIKE') then
+    								bedwars.AbilityController:useAbility('LIGHTNING_STRIKE', newproxy(true), {
+    									target = ent.RootPart.Position + ((ent.Humanoid.MoveDirection or Vector3.zero) * (1 + lplr:GetNetworkPing())),
+    								})
+    								task.wait(Delay.Value)
+    							end
+
+    							if UseStorm.Enabled and level > 1 then
+    								if bedwars.AbilityController:canUseAbility('LIGHTNING_STORM') then
+    									bedwars.AbilityController:useAbility('LIGHTNING_STORM', newproxy(true), {
+    										target = ent.RootPart.Position + ((ent.Humanoid.MoveDirection or Vector3.zero) * (1 + lplr:GetNetworkPing())),
+    									})
+    									task.wait(Delay.Value)
+    								end
+    							end
+    						end
+    					end
+    				end
+    				task.wait(0.1)
+    			until not AutoZeno.Enabled
+    		end
+    	end,
+    	Tooltip = 'Automatically uses zeno\'s staff'
+    })
+
+    Targets = AutoZeno:CreateTargets({
+    	Players = true,
+    	NPCs = false,
+    })
+    local methods = {'Damage', 'Distance'}
+    for i in sortmethods do
+    	if not table.find(methods, i) then
+    		table.insert(methods, i)
+    	end
+    end
+    TargetMode = AutoZeno:CreateDropdown({
+    	Name = 'Target Mode',
+    	List = methods,
+    	Default = 'Distance'
+    })
+    Limit = AutoZeno:CreateToggle({
+    	Name = 'Limit to item',
+    	Default = true
+    })
+    UseStrike = AutoZeno:CreateToggle({
+    	Name = 'Use Lightning Strike',
+    	Default = true
+    })
+    UseStorm = AutoZeno:CreateToggle({Name = 'Use Lightning Storm'})
+    AutoShockWave = AutoZeno:CreateToggle({
+    	Name = 'Auto Shockwave',
+    	Function = function(call)
+    		pcall(function()
+    			ShockwaveRange.Object.Visible = call
+    		end)
+    	end,
+    	Tooltip = 'Automatically uses the shockwave ability when a target is near',
+    })
+    ShockwaveRange = AutoZeno:CreateSlider({
+    	Name = 'Shockwave Range',
+    	Visible = false,
+    	Darker = true,
+    	Min = 1,
+    	Max = 12,
+    	Suffix = function(val)
+    		return val > 1 and 'studs' or 'stud'
+    	end,
+    	Decimal = 5,
+    	Default = 12
+    })
+    Range = AutoZeno:CreateSlider({
+    	Name = 'Range',
+    	Min = 1,
+    	Max = 60,
+    	Default = 35,
+    	Suffix = function(val)
+    		return val > 1 and 'studs' or 'stud'
+    	end,
+    	Decimal = 5
+    })
+    Delay = AutoZeno:CreateSlider({
+    	Name = 'Delay',
+    	Min = 0,
+    	Max = 10,
+    	Default = 0.5,
+    	Decimal = 5,
+    	Suffix = function(val)
+    		return val > 1 and 'secs' or 'sec'
+    	end
+    })
+end)
