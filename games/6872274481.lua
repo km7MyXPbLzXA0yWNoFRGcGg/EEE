@@ -2786,7 +2786,6 @@ run(function()
 	})
 end)
 	
-local Attacking
 run(function()
 	local Killaura
 	local Targets
@@ -2815,6 +2814,9 @@ run(function()
 	local LegitAura
 	local Particles, Boxes = {}, {}
 	local anims, AnimDelay, AnimTween, armC0 = vape.Libraries.auraanims, tick()
+	local swordEffectFunction, swordEffectController
+	local scytheAnimationFunction, scytheAnimationController
+	local animationHooksInstalled = false
 	local AttackRemote = {FireServer = function() end}
 	task.spawn(function()
 		AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
@@ -2869,8 +2871,17 @@ run(function()
 							}
 						}
 					}
-					debug.setupvalue(oldSwing or bedwars.SwordController.playSwordEffect, 6, fake)
-					debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, fake)
+					-- Save the live controller upvalues.  Restoring to bedwars.Knit is not
+					-- reliable: the game can use a different controller after an update.
+					swordEffectFunction = oldSwing or bedwars.SwordController.playSwordEffect
+					scytheAnimationFunction = bedwars.ScytheController.playLocalAnimation
+					local _, currentSwordEffectController = debug.getupvalue(swordEffectFunction, 6)
+					local _, currentScytheAnimationController = debug.getupvalue(scytheAnimationFunction, 3)
+					swordEffectController = currentSwordEffectController
+					scytheAnimationController = currentScytheAnimationController
+					debug.setupvalue(swordEffectFunction, 6, fake)
+					debug.setupvalue(scytheAnimationFunction, 3, fake)
+					animationHooksInstalled = true
 
 					task.spawn(function()
 						local started = false
@@ -2931,6 +2942,7 @@ run(function()
 							local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
 
 							for _, v in plrs do
+								if not Killaura.Enabled then break end
 								local delta = (v.RootPart.Position - selfpos)
 								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
 								if angle > (math.rad(AngleSlider.Value) / 2) then continue end
@@ -3006,6 +3018,11 @@ run(function()
 					task.wait(#attacked > 0 and #attacked * 0.02 or 1 / UpdateRate.Value)
 				until not Killaura.Enabled
 			else
+				-- Stop the running attack/animation tasks before restoring normal input.
+				Attacking = false
+				if AnimTween then
+					AnimTween:Cancel()
+				end
 				store.KillauraTarget = nil
 				for _, v in Boxes do
 					v.Adornee = nil
@@ -3018,9 +3035,15 @@ run(function()
 						lplr.PlayerGui.MobileUI['2'].Visible = true
 					end)
 				end
-				debug.setupvalue(oldSwing or bedwars.SwordController.playSwordEffect, 6, bedwars.Knit)
-				debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, bedwars.Knit)
-				Attacking = false
+				if animationHooksInstalled and swordEffectFunction then
+					debug.setupvalue(swordEffectFunction, 6, swordEffectController)
+				end
+				if animationHooksInstalled and scytheAnimationFunction then
+					debug.setupvalue(scytheAnimationFunction, 3, scytheAnimationController)
+				end
+				swordEffectFunction, swordEffectController = nil, nil
+				scytheAnimationFunction, scytheAnimationController = nil, nil
+				animationHooksInstalled = false
 				if armC0 then
 					AnimTween = tweenService:Create(gameCamera.Viewmodel.RightHand.RightWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
 						C0 = armC0
@@ -3268,7 +3291,6 @@ run(function()
 		Tooltip = 'Only attacks while swinging manually'
 	})
 end)
-
 	
 run(function()
 	local Value
