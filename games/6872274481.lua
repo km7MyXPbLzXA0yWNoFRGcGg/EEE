@@ -8354,7 +8354,46 @@ run(function()
 		end
 	})
 end)
-	
+	run(function()
+	local WhiteHits
+	local hookedHighlights = {}
+	WhiteHits = vape.Categories.Legit:CreateModule({
+		Name = "WhiteHits",
+		Function = function(callback)
+			if callback then
+				local function hookHighlight(v)
+					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
+					if highlight and not hookedHighlights[highlight] then
+						highlight.FillTransparency = 1
+						hookedHighlights[highlight] = highlight:GetPropertyChangedSignal("FillTransparency"):Connect(function()
+							if WhiteHits.Enabled then
+								highlight.FillTransparency = 1
+							end
+						end)
+					end
+				end
+				for _, v in entitylib.List do
+					hookHighlight(v)
+				end
+				WhiteHits:Clean(entitylib.Events.EntityAdded:Connect(hookHighlight))
+				WhiteHits:Clean(entitylib.Events.EntityRemoved:Connect(function(v)
+					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
+					if highlight and hookedHighlights[highlight] then
+						hookedHighlights[highlight]:Disconnect()
+						hookedHighlights[highlight] = nil
+					end
+				end))
+			else
+				for _, conn in pairs(hookedHighlights) do
+					if typeof(conn) == "RBXScriptConnection" then
+						conn:Disconnect()
+					end
+				end
+				table.clear(hookedHighlights)
+			end
+		end
+	})
+end)
 run(function()
 	local AutoConsume
 	local Health
