@@ -6274,131 +6274,335 @@ run(function()
 end)
 	
 run(function()
-	local AutoShoot
-	local Targets
-	local Check
-	local Projectiles
-	local UseSophia
-	local UseWhim
-	local FireRate
-	local SwitchDelay
+	local shooting, old = false
+	local AutoShootInterval
+	local AutoShootSwitchSpeed
+	local AutoShootRange
+	local AutoShootFOV
+	local AutoShootWaitDelay
+	local lastAutoShootTime = 0
+	local autoShootEnabled = false
+	local KillauraTargetCheck
+	local FirstPersonCheck
+	_G.autoShootLock = _G.autoShootLock or false
+	local cachedBows = {}
+	local cachedSwordSlot = nil
+	local cachedHasArrows = false
+	local lastInventoryUpdate = 0
+	local INVENTORY_CACHE_TIME = 0.5
+	local lastTargetCheck = 0
+	local lastTargetResult = false
+	local TARGET_CHECK_INTERVAL = 0.15
+	local math_acos = math.acos
+	local math_rad = math.rad
+	local tick = tick
 	
-	local FireDelays = {}
-	
-	local function getEntity()
-		local selfpos = entitylib.character.RootPart.Position
-		local plrs = entitylib.AllPosition({
-			Origin = selfpos,
-			Part = 'RootPart',
-			Range = 22,
-			Players = Targets.Players.Enabled,
-			NPCs = Targets.NPCs.Enabled,
-			Wallcheck = Targets.Walls.Enabled,
-			Limit = 10
-		})
-		if #plrs > 0 then
-			for _, ent in plrs do
-				local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
-				local delta = (ent.RootPart.Position - selfpos) * Vector3.new(1, 0, 1)
-				local angle = localfacing.Magnitude > 0 and delta.Magnitude > 0 and math.acos(math.clamp(localfacing.Unit:Dot(delta.Unit), -1, 1)) or 0
-				if angle > (math.rad(120) / 2) then continue end
-				return ent
+	local function updateInventoryCache()
+		local now = tick()
+		if now - lastInventoryUpdate < INVENTORY_CACHE_TIME then
+			return
+		end
+		lastInventoryUpdate = now
+		
+		local arrowItem = getItem('arrow')
+		cachedHasArrows = arrowItem and arrowItem.amount > 0
+		
+		table.clear(cachedBows)
+		cachedSwordSlot = nil
+		
+		local hotbar = store.inventory.hotbar
+		for i = 1, #hotbar do
+			local v = hotbar[i]
+			if v.item and v.item.itemType then
+				local itemMeta = bedwars.ItemMeta[v.item.itemType]
+				if itemMeta then
+					if itemMeta.projectileSource then
+						local projectileSource = itemMeta.projectileSource
+						if projectileSource.ammoItemTypes and table.find(projectileSource.ammoItemTypes, 'arrow') then
+							table.insert(cachedBows, i - 1)
+						end
+					end
+					if itemMeta.sword and not cachedSwordSlot then
+						cachedSwordSlot = i - 1
+					end
+				end
 			end
 		end
-		return nil
 	end
 	
-	AutoShoot = vape.Categories.Utility:CreateModule({
+	local function hasArrows()
+		updateInventoryCache()
+		return cachedHasArrows
+	end
+	
+	local function getBows()
+		updateInventoryCache()
+		return cachedBows
+	end
+	
+	local function getSwordSlot()
+		updateInventoryCache()
+		return cachedSwordSlot
+	end
+	
+	local function hasValidTarget()
+		if KillauraTargetCheck.Enabled then
+			return store.KillauraTarget ~= nil
+		end
+		
+		local now = tick()
+		if now - lastTargetCheck < TARGET_CHECK_INTERVAL then
+			return lastTargetResult
+		end
+		lastTargetCheck = now
+		
+		if not entitylib.isAlive then 
+			lastTargetResult = false
+			return false 
+		end
+		
+		local myPos = entitylib.character.RootPart.Position
+		local myLook = entitylib.character.RootPart.CFrame.LookVector
+		local rangeSquared = AutoShootRange.Value * AutoShootRange.Value
+		local fovRad = math_rad(AutoShootFOV.Value)
+		local myTeam = lplr:GetAttribute('Team')
+		
+		for _, entity in entitylib.List do
+			if entity.Player == lplr then continue end
+			if not entity.Character then continue end
+			
+			local rootPart = entity.RootPart
+			if not rootPart then continue end
+			
+			if entity.Player then
+				if myTeam == entity.Player:GetAttribute('Team') then
+					continue
+				end
+			else
+				if not entity.Targetable then
+					continue
+				end
+			end
+			
+			local pos = rootPart.Position
+			local dx = pos.X - myPos.X
+			local dy = pos.Y - myPos.Y
+			local dz = pos.Z - myPos.Z
+			local distanceSquared = dx * dx + dy * dy + dz * dz
+			
+			if distanceSquared > rangeSquared then continue end
+			
+			local distance = math.sqrt(distanceSquared)
+			if distance < 0.01 then 
+				lastTargetResult = true
+				return true 
+			end
+			
+			local toTargetX = dx / distance
+			local toTargetY = dy / distance
+			local toTargetZ = dz / distance
+			local dot = myLook.X * toTargetX + myLook.Y * toTargetY + myLook.Z * toTargetZ
+			local angle = math_acos(math.max(-1, math.min(1, dot)))
+			
+			if angle <= fovRad then
+				lastTargetResult = true
+				return true
+			end
+		end
+		
+		lastTargetResult = false
+		return false
+	end
+	
+	local AutoShoot = vape.Categories.Utility:CreateModule({
 		Name = 'AutoShoot',
 		Function = function(callback)
 			if callback then
-				repeat
-					if entitylib.isAlive and store.hand.toolType == 'sword' and (tick() - bedwars.SwordController.lastSwing) < 0.2 then
-						local hotbar = store.hand.tool and getHotbar(store.hand.tool) or nil
-						for _, data in getProjectiles(Projectiles.ListEnabled, UseSophia.Enabled, UseWhim.Enabled) do
-							local item, ammo, projectile, itemMeta = unpack(data)
-							if (FireDelays[item.itemType] or 0) < tick() then
-								local ent = getEntity()
-								if (not Check.Enabled or ent) and hotbarSwitch(getHotbar(item.tool)) then
-									task.wait(store.ping.total or 0)
-									local meta = bedwars.ProjectileMeta[projectile]
-									local projSpeed, gravity = meta.launchVelocity, meta.gravitationalAcceleration or 196.2
-									local calc = ent and prediction.SolveTrajectory(entitylib.character.RootPart.Position, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, rayCheck, ent.Humanoid.FloorMaterial == Enum.Material.Air or math.abs(ent.RootPart.Velocity.Y) > 0.01, ent.RootPart.Position, ent.RootPart, nil, true) or nil
-									if calc then
-										local shootPosition = (CFrame.new(entitylib.character.RootPart.Position, calc) * CFrame.new(Vector3.new(-bedwars.BowConstantsTable.RelX, -bedwars.BowConstantsTable.RelY, -bedwars.BowConstantsTable.RelZ))).Position
-										local aim = prediction.SolveTrajectory(shootPosition, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, rayCheck, ent.Humanoid.FloorMaterial == Enum.Material.Air or math.abs(ent.RootPart.Velocity.Y) > 0.01, ent.RootPart.Position, ent.RootPart, nil, true) or calc
-										local dir, id = CFrame.lookAt(shootPosition, aim).LookVector, httpService:GenerateGUID(true)
-										bedwars.Handler:Get('ProjectileFire'):Fire('CallServerAsync',
-											item.tool,
-											ammo,
-											projectile,
-											shootPosition,
-											entitylib.character.RootPart.Position,
-											dir * projSpeed,
-											id,
-											{
-												drawDurationSeconds = 1,
-												shotId = httpService:GenerateGUID(false),
-											},
-											workspace:GetServerTimeNow() - 0.045
-										):andThen(function(res)
-											if res then
-												res.Parent = replicatedStorage
-											end
-										end)
-										prediction.trackShot(ent.RootPart)
-										FireDelays[item.itemType] = tick() + (itemMeta.fireDelaySec + FireRate:GetRandomValue())
-										task.wait(SwitchDelay.Value)
+				autoShootEnabled = true
+				
+				lastInventoryUpdate = 0
+				updateInventoryCache()
+				
+				old = bedwars.ProjectileController.createLocalProjectile
+				bedwars.ProjectileController.createLocalProjectile = function(...)
+					local source, data, proj = ...
+					if source and proj and (proj == 'arrow' or bedwars.ProjectileMeta[proj] and bedwars.ProjectileMeta[proj].combat) and not _G.autoShootLock then
+						task.spawn(function()
+							if not hasArrows() then
+								return
+							end
+							
+							if FirstPersonCheck.Enabled and not isFirstPerson() then
+								return
+							end
+							
+							if KillauraTargetCheck.Enabled then
+								if not store.KillauraTarget then
+									return
+								end
+							else
+								if not hasValidTarget() then
+									return
+								end
+							end
+							
+							local bows = getBows()
+							if #bows > 0 then
+								_G.autoShootLock = true
+								task.wait(AutoShootWaitDelay.Value)
+								local selected = store.inventory.hotbarSlot
+								for i = 1, #bows do
+									local v = bows[i]
+									if hotbarSwitch(v) then
+										task.wait(0.05)
+										leftClick()
+										task.wait(0.05)
 									end
+								end
+								hotbarSwitch(selected)
+								_G.autoShootLock = false
+							end
+						end)
+					end
+					return old(...)
+				end
+				
+				task.spawn(function()
+					repeat
+						task.wait(0.15) 
+						if autoShootEnabled and not _G.autoShootLock then
+							if not hasArrows() then
+								continue
+							end
+							
+							if FirstPersonCheck.Enabled and not isFirstPerson() then
+								continue
+							end
+							
+							local hasTarget = false
+							if KillauraTargetCheck.Enabled then
+								hasTarget = store.KillauraTarget ~= nil
+							else
+								hasTarget = hasValidTarget()
+							end
+							
+							if not hasTarget then
+								continue
+							end
+							
+							local currentTime = tick()
+							if (currentTime - lastAutoShootTime) >= AutoShootInterval.Value then
+								local bows = getBows()
+								
+								if #bows > 0 then
+									_G.autoShootLock = true
+									lastAutoShootTime = currentTime
+									local originalSlot = store.inventory.hotbarSlot
+									
+									for i = 1, #bows do
+										local bowSlot = bows[i]
+										if hotbarSwitch(bowSlot) then
+											task.wait(AutoShootSwitchSpeed.Value)
+											leftClick()
+											task.wait(0.05)
+										end
+									end
+									
+									local swordSlot = getSwordSlot()
+									if swordSlot then
+										hotbarSwitch(swordSlot)
+									else
+										hotbarSwitch(originalSlot)
+									end
+									
+									_G.autoShootLock = false
 								end
 							end
 						end
-						hotbarSwitch(hotbar)
-					end
-					task.wait(0.1)
-				until not AutoShoot.Enabled
+					until not autoShootEnabled
+				end)
+			else
+				autoShootEnabled = false
+				if old then
+					bedwars.ProjectileController.createLocalProjectile = old
+				end
+				_G.autoShootLock = false
+				
+				table.clear(cachedBows)
+				cachedSwordSlot = nil
+				cachedHasArrows = false
+				lastInventoryUpdate = 0
 			end
 		end,
-		Tooltip = 'Automatically crossbow macro\'s'
+		Tooltip = 'Automatically switches to bows and shoots them'
 	})
-	Targets = AutoShoot:CreateTargets({Players = true})
-	Check = AutoShoot:CreateToggle({
-		Name = 'Target check',
-		Default = true,
-		Function = function(callback)
-			if Targets.Object then
-				Targets.Object.Visible = callback
-			end
-		end
+	
+	AutoShootInterval = AutoShoot:CreateSlider({
+		Name = 'Shoot Interval',
+		Min = 0.1,
+		Max = 3,
+		Default = 0.5,
+		Decimal = 10,
+		Suffix = function(val)
+			return val == 1 and 'second' or 'seconds'
+		end,
+		Tooltip = 'How often to auto-shoot bows'
 	})
-	Projectiles = AutoShoot:CreateTextList({
-		Name = 'Projectiles',
-		Default = {'arrow', 'snowball'}
-	})
-	UseSophia = AutoShoot:CreateToggle({
-		Name = 'Use sophia',
-		Tooltip = 'Also shoots sophia\'s frost staff, swapping it out of mist mode on its own'
-	})
-	UseWhim = AutoShoot:CreateToggle({
-		Name = 'Use whim',
-		Tooltip = 'Also casts whim\'s magic book, follows whatever element you have cycled'
-	})
-	FireRate = AutoShoot:CreateTwoSlider({
-		Name = 'Fire Rate',
-		Min = 0,
-		Max = 1,
-		DefaultMin = 0.05,
-		DefaultMax = 0.12,
-		Decimal = 100
-	})
-	SwitchDelay = AutoShoot:CreateSlider({
+	
+	AutoShootSwitchSpeed = AutoShoot:CreateSlider({
 		Name = 'Switch Delay',
 		Min = 0,
-		Max = 1,
+		Max = 0.2,
+		Default = 0.05,
 		Decimal = 100,
-		Suffix = 'seconds',
-		Default = 0.02
+		Suffix = 's',
+		Tooltip = 'Delay between switching and shooting (lower = faster)'
 	})
+	
+	AutoShootWaitDelay = AutoShoot:CreateSlider({
+		Name = 'Wait Delay',
+		Min = 0,
+		Max = 1,
+		Default = 0,
+		Decimal = 100,
+		Suffix = 's',
+		Tooltip = 'Delay before shooting (helps prevent ghosting)'
+	})
+	
+	AutoShootRange = AutoShoot:CreateSlider({
+		Name = 'Range',
+		Min = 1,
+		Max = 30,
+		Default = 20,
+		Suffix = function(val)
+			return val == 1 and 'stud' or 'studs'
+		end,
+		Tooltip = 'Maximum range to auto-shoot'
+	})
+	
+	AutoShootFOV = AutoShoot:CreateSlider({
+		Name = 'FOV',
+		Min = 1,
+		Max = 180,
+		Default = 90,
+		Tooltip = 'Field of view for target detection (1-180 degrees)'
+	})
+	
+	KillauraTargetCheck = AutoShoot:CreateToggle({
+		Name = 'Require Killaura Target',
+		Default = false,
+		Tooltip = 'Only auto-shoot when Killaura has a target (overrides Range/FOV)'
+	})
+	
+	FirstPersonCheck = AutoShoot:CreateToggle({
+		Name = 'First Person Only',
+		Default = false,
+		Tooltip = 'Only works in first person mode'
+	})
+	
+	vape:Clean(vapeEvents.InventoryChanged.Event:Connect(function()
+		lastInventoryUpdate = 0
+	end))
 end)
 	
 run(function()
