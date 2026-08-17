@@ -279,7 +279,10 @@ end)
 		bb.ResetOnSpawn = false
 		bb.MaxDistance = 1000
 		
-		bb.Size = UDim2.fromScale(7.2, 0.9)
+		-- Offset sizing is screen-space pixels, so the label remains the same
+		-- size while the camera zooms.  The 26px height is slightly smaller than
+		-- the previous world-scaled presentation.
+		bb.Size = UDim2.fromOffset(170, 26)
 		bb.StudsOffset = Vector3.new(0.44, 1.45, 0)
 		
 		local main = Instance.new("Frame")
