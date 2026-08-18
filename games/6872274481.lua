@@ -18638,7 +18638,6 @@ run(function()
 		Default = true
 	})
 end)
-
 run(function()
 	local ViewMatchHistory
 	ViewMatchHistory = vape.Categories.Utility:CreateModule({
@@ -18659,7 +18658,6 @@ run(function()
 		Tooltip = "matchhisory"
 	})																								
 end)
-
 run(function()
     local Beekeeper
     local CollectionToggle
