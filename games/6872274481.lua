@@ -3836,7 +3836,6 @@ run(function()
 	local AttackRange
 	local ChargeTime
 	local UpdateRate
-	local RequestRate
 	local AngleSlider
 	local MaxTargets
 	local Mouse
@@ -3890,9 +3889,10 @@ run(function()
 	end
 
 	Killaura = vape.Categories.Blatant:CreateModule({
-		Name = 'KillauraDebugka',
+		Name = 'KillauraDEBUG',
 		Function = function(callback)
 			if callback then
+				local nextServerAttack = 0
 				if inputService.TouchEnabled then
 					pcall(function()
 						lplr.PlayerGui.MobileUI['2'].Visible = Limit.Enabled
@@ -3964,10 +3964,6 @@ run(function()
 					end)
 				end
 
-				-- Scan at Update rate, but issue at most one evenly spaced request at a
-				-- time.  This avoids multi-target bursts while leaving server validation
-				-- fully authoritative.
-				local nextAttackRequest = 0
 				repeat
 					local attacked, sword, meta = {}, getAttackData()
 					Attacking = false
@@ -4026,8 +4022,12 @@ run(function()
 
 								local actualRoot = v.Character.PrimaryPart
 								local now = tick()
-								if actualRoot and now >= nextAttackRequest then
-									nextAttackRequest = now + (1 / RequestRate.Value)
+								local attackCooldown = math.max(
+									tonumber(meta.sword.attackSpeed) or 0,
+									1 / math.clamp(UpdateRate.Value, 1, 120)
+								)
+								if actualRoot and now >= nextServerAttack then
+									nextServerAttack = now + attackCooldown
 									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 									local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 									bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
@@ -4149,14 +4149,6 @@ run(function()
 		Max = 120,
 		Default = 60,
 		Suffix = 'hz'
-	})
-	RequestRate = Killaura:CreateSlider({
-		Name = 'Request rate',
-		Min = 4,
-		Max = 20,
-		Default = 10,
-		Suffix = 'hz',
-		Tooltip = 'Evenly spaces attack requests; server cooldown still decides hits.'
 	})
 	MaxTargets = Killaura:CreateSlider({
 		Name = 'Max targets',
