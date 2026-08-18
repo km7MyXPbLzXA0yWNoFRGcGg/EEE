@@ -4640,7 +4640,7 @@ run(function()
 		Tooltip = 'Prevents slowing down when using items.'
 	})
 end)
-	local Attacking
+local Attacking
 run(function()
 	local Killaura
 	local Targets
@@ -4649,7 +4649,7 @@ run(function()
 	local AttackRange
 	local ChargeTime
 	local UpdateRate
-	local RequestRate
+	local AttackRate
 	local AngleSlider
 	local MaxTargets
 	local Mouse
@@ -4703,7 +4703,7 @@ run(function()
 	end
 
 	Killaura = vape.Categories.Blatant:CreateModule({
-		Name = 'KillauraTest2',
+		Name = 'KillauraOLD',
 		Function = function(callback)
 			if callback then
 				if inputService.TouchEnabled then
@@ -4777,11 +4777,9 @@ run(function()
 					end)
 				end
 
-				-- Scan at Update rate, but issue only one request at a time.  OLD was
-				-- responsive because it sent each eligible target immediately, which
-				-- turns into a burst and is rate limited by the server.  Keep that fast
-				-- target acquisition, while pacing the actual requests by the sword's
-				-- cooldown and the known server-safe cadence.
+				-- Preserve OLD's hit validation, but serialize its remote requests.  The
+				-- previous loop fired once for every valid target during a scan, causing
+				-- bursts that eventually tripped the server rate limit.
 				local nextAttackRequest = 0
 				repeat
 					local attacked, sword, meta = {}, getAttackData()
@@ -4842,11 +4840,9 @@ run(function()
 								local actualRoot = v.Character.PrimaryPart
 								local now = tick()
 								if actualRoot and now >= nextAttackRequest then
-									local swordCooldown = meta.sword and meta.sword.attackSpeed or 0
 									local requestInterval = math.max(
-										swordCooldown,
-										10 / 34,
-										1 / RequestRate.Value
+										meta.sword and meta.sword.attackSpeed or 0,
+										10 / AttackRate.Value
 									)
 									nextAttackRequest = now + requestInterval
 									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
@@ -4891,9 +4887,9 @@ run(function()
 						entitylib.character.RootPart.CFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(vec.X, entitylib.character.RootPart.Position.Y + 0.001, vec.Z))
 					end
 
-					-- Do not slow scans down as more targets are found.  The request
-					-- scheduler above is the only attack-rate limiter.
-					task.wait(1 / UpdateRate.Value)
+					-- Target scans must not slow down with multiple players; the shared
+					-- request timer above is the only attack-rate limiter.
+					task.wait(1 / math.clamp(UpdateRate.Value, 1, 120))
 				until not Killaura.Enabled
 			else
 				-- Stop the running attack/animation tasks before restoring normal input.
@@ -4973,13 +4969,13 @@ run(function()
 		Default = 60,
 		Suffix = 'hz'
 	})
-	RequestRate = Killaura:CreateSlider({
-		Name = 'Request rate cap',
-		Min = 4,
-		Max = 20,
-		Default = 20,
-		Suffix = 'hz',
-		Tooltip = 'Additional cap; sword cooldown and the server-safe cadence always take priority.'
+	AttackRate = Killaura:CreateSlider({
+		Name = 'Attack attempts per 10s',
+		Min = 1,
+		Max = 35,
+		Default = 34,
+		Suffix = ' hits',
+		Tooltip = 'Shared request cap. 34 is the safer default; 35 is available for testing.'
 	})
 	MaxTargets = Killaura:CreateSlider({
 		Name = 'Max targets',
