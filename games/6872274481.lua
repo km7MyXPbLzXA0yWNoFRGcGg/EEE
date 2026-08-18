@@ -6869,6 +6869,56 @@ run(function()
 		updateInventoryCache()
 		return cachedSwordSlot
 	end
+
+	-- Do not use hotbarSwitch here: it waits forever if the game does not emit an
+	-- inventory event after a slot dispatch.  Polling the store gives AutoShoot a
+	-- bounded failure path instead of leaving its lock held forever.
+	local function switchToSlot(slot)
+		if slot == nil then return false end
+		if store.inventory.hotbarSlot == slot then return true end
+		bedwars.Store:dispatch({
+			type = 'InventorySelectHotbarSlot',
+			slot = slot
+		})
+
+		local timeout = tick() + 0.25
+		repeat
+			task.wait()
+		until store.inventory.hotbarSlot == slot or tick() >= timeout
+		return store.inventory.hotbarSlot == slot
+	end
+
+	local function clickBow()
+		if type(mouse1click) == 'function' then
+			return pcall(mouse1click)
+		end
+		if type(mouse1press) == 'function' and type(mouse1release) == 'function' then
+			local pressed = pcall(mouse1press)
+			if not pressed then return false end
+			task.wait()
+			return pcall(mouse1release)
+		end
+		return false
+	end
+
+	local function fireBows(switchDelay, returnToSword)
+		_G.autoShootLock = true
+		local originalSlot = store.inventory.hotbarSlot
+		local ok = xpcall(function()
+			for _, bowSlot in getBows() do
+				if switchToSlot(bowSlot) then
+					task.wait(switchDelay)
+					clickBow()
+					task.wait(0.05)
+				end
+			end
+
+			local restoreSlot = returnToSword and getSwordSlot() or originalSlot
+			switchToSlot(restoreSlot or originalSlot)
+		end, debug.traceback)
+		_G.autoShootLock = false
+		return ok
+	end
 	
 	local function hasValidTarget()
 		if KillauraTargetCheck.Enabled then
@@ -6973,19 +7023,8 @@ run(function()
 							
 							local bows = getBows()
 							if #bows > 0 then
-								_G.autoShootLock = true
 								task.wait(AutoShootWaitDelay.Value)
-								local selected = store.inventory.hotbarSlot
-								for i = 1, #bows do
-									local v = bows[i]
-									if hotbarSwitch(v) then
-										task.wait(0.05)
-										leftClick()
-										task.wait(0.05)
-									end
-								end
-								hotbarSwitch(selected)
-								_G.autoShootLock = false
+								fireBows(0.05, false)
 							end
 						end)
 					end
@@ -7020,27 +7059,8 @@ run(function()
 								local bows = getBows()
 								
 								if #bows > 0 then
-									_G.autoShootLock = true
 									lastAutoShootTime = currentTime
-									local originalSlot = store.inventory.hotbarSlot
-									
-									for i = 1, #bows do
-										local bowSlot = bows[i]
-										if hotbarSwitch(bowSlot) then
-											task.wait(AutoShootSwitchSpeed.Value)
-											leftClick()
-											task.wait(0.05)
-										end
-									end
-									
-									local swordSlot = getSwordSlot()
-									if swordSlot then
-										hotbarSwitch(swordSlot)
-									else
-										hotbarSwitch(originalSlot)
-									end
-									
-									_G.autoShootLock = false
+									fireBows(AutoShootSwitchSpeed.Value, true)
 								end
 							end
 						end
@@ -7124,11 +7144,6 @@ run(function()
 		Default = false,
 		Tooltip = 'Only works in first person mode'
 	})
-	
-	vape:Clean(vapeEvents.InventoryChanged.Event:Connect(function()
-		lastInventoryUpdate = 0
-	end))
-end)
 	
 run(function()
 	local AutoToxic
