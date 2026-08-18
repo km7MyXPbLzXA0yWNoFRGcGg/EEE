@@ -6797,7 +6797,6 @@ run(function()
 		Tooltip = 'Chooses a random mode'
 	})
 end)
-	
 run(function()
 	local shooting, old = false
 	local AutoShootInterval
@@ -7144,6 +7143,12 @@ run(function()
 		Default = false,
 		Tooltip = 'Only works in first person mode'
 	})
+	
+	vape:Clean(vapeEvents.InventoryChanged.Event:Connect(function()
+		lastInventoryUpdate = 0
+	end))
+end)
+	
 	
 run(function()
 	local AutoToxic
