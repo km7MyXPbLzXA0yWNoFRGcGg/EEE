@@ -9499,6 +9499,7 @@ end)
 	run(function()
 	local WhiteHits
 	local hookedHighlights = {}
+	local originalTransparency = {}
 	WhiteHits = vape.Categories.Legit:CreateModule({
 		Name = "WhiteHits",
 		Function = function(callback)
@@ -9506,6 +9507,7 @@ end)
 				local function hookHighlight(v)
 					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
 					if highlight and not hookedHighlights[highlight] then
+						originalTransparency[highlight] = highlight.FillTransparency
 						highlight.FillTransparency = 1
 						hookedHighlights[highlight] = highlight:GetPropertyChangedSignal("FillTransparency"):Connect(function()
 							if WhiteHits.Enabled then
@@ -9514,24 +9516,38 @@ end)
 						end)
 					end
 				end
-				for _, v in entitylib.List do
+				local function watchCharacter(v)
+					if not v.Character then return end
 					hookHighlight(v)
+					WhiteHits:Clean(v.Character.ChildAdded:Connect(function(child)
+						if child.Name == '_DamageHighlight_' then
+							hookHighlight(v)
+						end
+					end))
 				end
-				WhiteHits:Clean(entitylib.Events.EntityAdded:Connect(hookHighlight))
+				for _, v in entitylib.List do
+					watchCharacter(v)
+				end
+				WhiteHits:Clean(entitylib.Events.EntityAdded:Connect(watchCharacter))
 				WhiteHits:Clean(entitylib.Events.EntityRemoved:Connect(function(v)
 					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
 					if highlight and hookedHighlights[highlight] then
 						hookedHighlights[highlight]:Disconnect()
 						hookedHighlights[highlight] = nil
+						originalTransparency[highlight] = nil
 					end
 				end))
 			else
-				for _, conn in pairs(hookedHighlights) do
+				for highlight, conn in pairs(hookedHighlights) do
 					if typeof(conn) == "RBXScriptConnection" then
 						conn:Disconnect()
 					end
+					if highlight.Parent and originalTransparency[highlight] ~= nil then
+						highlight.FillTransparency = originalTransparency[highlight]
+					end
 				end
 				table.clear(hookedHighlights)
+				table.clear(originalTransparency)
 			end
 		end
 	})
@@ -19038,18 +19054,25 @@ run(function()
 		Function = function(callback)
 			if callback then
 				ViewMatchHistory:Toggle(false)
-				local d = nil
-				bedwars.MatchHistroyController:requestMatchHistory(lplr.Name):andThen(function(Data)
-					if Data then
-						bedwars.AppController:openApp({app = bedwars.MatchHistroyApp,appId = "MatchHistoryApp",},Data)
+				local controller = bedwars.MatchHistoryController or bedwars.MatchHistroyController
+				local app = bedwars.MatchHistoryApp or bedwars.MatchHistroyApp
+				if not (controller and controller.requestMatchHistory and app and bedwars.AppController) then
+					warn('[Vape] Match History is unavailable in this BedWars version.')
+					return
+				end
+				controller:requestMatchHistory(lplr.Name):andThen(function(data)
+					if data then
+						bedwars.AppController:openApp({app = app, appId = 'MatchHistoryApp'}, data)
 					end
+				end):catch(function(err)
+					warn('[Vape] Could not load match history: ' .. tostring(err))
 				end)
 			else
 				return
 			end
 		end,
-		Tooltip = "matchhisory"
-	})																								
+		Tooltip = 'View your recent match history'
+	})								
 end)
 run(function()
     local Beekeeper
