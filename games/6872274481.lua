@@ -9496,62 +9496,7 @@ run(function()
 		end
 	})
 end)
-	run(function()
-	local WhiteHits
-	local hookedHighlights = {}
-	local originalTransparency = {}
-	WhiteHits = vape.Categories.Legit:CreateModule({
-		Name = "WhiteHits",
-		Function = function(callback)
-			if callback then
-				local function hookHighlight(v)
-					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
-					if highlight and not hookedHighlights[highlight] then
-						originalTransparency[highlight] = highlight.FillTransparency
-						highlight.FillTransparency = 1
-						hookedHighlights[highlight] = highlight:GetPropertyChangedSignal("FillTransparency"):Connect(function()
-							if WhiteHits.Enabled then
-								highlight.FillTransparency = 1
-							end
-						end)
-					end
-				end
-				local function watchCharacter(v)
-					if not v.Character then return end
-					hookHighlight(v)
-					WhiteHits:Clean(v.Character.ChildAdded:Connect(function(child)
-						if child.Name == '_DamageHighlight_' then
-							hookHighlight(v)
-						end
-					end))
-				end
-				for _, v in entitylib.List do
-					watchCharacter(v)
-				end
-				WhiteHits:Clean(entitylib.Events.EntityAdded:Connect(watchCharacter))
-				WhiteHits:Clean(entitylib.Events.EntityRemoved:Connect(function(v)
-					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
-					if highlight and hookedHighlights[highlight] then
-						hookedHighlights[highlight]:Disconnect()
-						hookedHighlights[highlight] = nil
-						originalTransparency[highlight] = nil
-					end
-				end))
-			else
-				for highlight, conn in pairs(hookedHighlights) do
-					if typeof(conn) == "RBXScriptConnection" then
-						conn:Disconnect()
-					end
-					if highlight.Parent and originalTransparency[highlight] ~= nil then
-						highlight.FillTransparency = originalTransparency[highlight]
-					end
-				end
-				table.clear(hookedHighlights)
-				table.clear(originalTransparency)
-			end
-		end
-	})
-end)
+	
 run(function()
 	local AutoConsume
 	local Health
@@ -12574,6 +12519,62 @@ run(function()
         Default = false,
     })
 end)
+	run(function()
+	local WhiteHits
+	local hookedHighlights = {}
+	local originalTransparency = {}
+	WhiteHits =  vape.Categories.Blatant:CreateModule({
+		Name = "WhiteHits",
+		Function = function(callback)
+			if callback then
+				local function hookHighlight(v)
+					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
+					if highlight and not hookedHighlights[highlight] then
+						originalTransparency[highlight] = highlight.FillTransparency
+						highlight.FillTransparency = 1
+						hookedHighlights[highlight] = highlight:GetPropertyChangedSignal("FillTransparency"):Connect(function()
+							if WhiteHits.Enabled then
+								highlight.FillTransparency = 1
+							end
+						end)
+					end
+				end
+				local function watchCharacter(v)
+					if not v.Character then return end
+					hookHighlight(v)
+					WhiteHits:Clean(v.Character.ChildAdded:Connect(function(child)
+						if child.Name == '_DamageHighlight_' then
+							hookHighlight(v)
+						end
+					end))
+				end
+				for _, v in entitylib.List do
+					watchCharacter(v)
+				end
+				WhiteHits:Clean(entitylib.Events.EntityAdded:Connect(watchCharacter))
+				WhiteHits:Clean(entitylib.Events.EntityRemoved:Connect(function(v)
+					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
+					if highlight and hookedHighlights[highlight] then
+						hookedHighlights[highlight]:Disconnect()
+						hookedHighlights[highlight] = nil
+						originalTransparency[highlight] = nil
+					end
+				end))
+			else
+				for highlight, conn in pairs(hookedHighlights) do
+					if typeof(conn) == "RBXScriptConnection" then
+						conn:Disconnect()
+					end
+					if highlight.Parent and originalTransparency[highlight] ~= nil then
+						highlight.FillTransparency = originalTransparency[highlight]
+					end
+				end
+				table.clear(hookedHighlights)
+				table.clear(originalTransparency)
+			end
+		end
+	})
+end)																																																																	
 run(function()
 	local BCR
 	local Value
