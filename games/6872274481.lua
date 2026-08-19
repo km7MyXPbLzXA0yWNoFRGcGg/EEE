@@ -8268,7 +8268,400 @@ run(function()
         Tooltip = 'Delay in milliseconds before AutoPatch places a replacement block; 0 for instant'
     })
 end)
+run(function()
+	local BlockIn
+	local SpeedSlider
+	local DelaySlider
+	local AutoSwitch
+	local HandCheck
+	local StrongestOnly
+	local CpsConstants = nil
+	local originalCPS = 12
+	local placing = false
+	local buildThread = nil
+	
+	local facesOnly = {
+		Vector3.new(3, 0, 0),   
+		Vector3.new(-3, 0, 0), 
+		Vector3.new(0, 3, 0),   
+		Vector3.new(0, -3, 0),  
+		Vector3.new(0, 0, 3),   
+		Vector3.new(0, 0, -3) 
+	}
+	
+	local function checkFaceAdjacent(pos)
+		for _, v in facesOnly do
+			if getPlacedBlock(pos + v) then
+				return true
+			end
+		end
+		return false
+	end
+	
+	local function hasFaceBelowOrSide(pos)
+		if getPlacedBlock(pos - Vector3.new(0, 3, 0)) then
+			return true
+		end
+		
+		for _, v in facesOnly do
+			if v.Y == 0 and getPlacedBlock(pos + v) then
+				return true
+			end
+		end
+		
+		return false
+	end
+	
+	local function canPlaceAtPosition(blockpos)
+		if not checkFaceAdjacent(blockpos) then
+			return false
+		end
+		
+		local checkBelow = blockpos - Vector3.new(0, 3, 0)
+		local hasSupport = false
+		
+		for i = 1, 10 do
+			if getPlacedBlock(checkBelow) then
+				hasSupport = true
+				break
+			end
+			checkBelow = checkBelow - Vector3.new(0, 3, 0)
+		end
+		
+		return hasSupport or hasFaceBelowOrSide(blockpos)
+	end
+	
+	local function initCPS()
+		pcall(function()
+			CpsConstants = require(replicatedStorage.TS['shared-constants']).CpsConstants
+		end)
+		
+		if not CpsConstants then
+			pcall(function()
+				CpsConstants = bedwars.CpsConstants
+			end)
+		end
+		
+		if CpsConstants then
+			originalCPS = CpsConstants.BLOCK_PLACE_CPS
+		end
+	end
+	
+	local function setCPS(value)
+		if CpsConstants then
+			CpsConstants.BLOCK_PLACE_CPS = value
+		end
+	end
+	
+	local function getBlocks()
+		local blocks = {}
+		
+		for _, item in pairs(store.inventory.inventory.items) do
+			if bedwars.ItemMeta[item.itemType] and bedwars.ItemMeta[item.itemType].block then
+				local meta = bedwars.ItemMeta[item.itemType]
+				table.insert(blocks, {
+					itemType = item.itemType,
+					health = meta.block.health or 0,
+					tool = item.tool
+				})
+			end
+		end
+		
+		table.sort(blocks, function(a, b)
+			return a.health > b.health
+		end)
+		
+		return blocks
+	end
+	
+	local function getHotbarSlotForBlock(blockTool)
+		for i, v in pairs(store.inventory.hotbar) do
+			if v.item and v.item.tool == blockTool then
+				return i - 1
+			end
+		end
+		return nil
+	end
+	
+	local function hasBlockAt(pos)
+		local block, blockpos = getPlacedBlock(pos)
+		return block ~= nil
+	end
+	
+	local function getScaffoldBlock()
+		if HandCheck.Enabled then
+			if store.hand and store.hand.toolType == 'block' then
+				return store.hand.tool.Name
+			end
+			return nil
+		else
+			local blocks = getBlocks()
+			if #blocks == 0 then
+				return nil
+			end
+			
+			if StrongestOnly.Enabled then
+				return blocks[1].itemType
+			else
+				local weakestInHotbar = nil
+				local weakestHealth = math.huge
+				
+				for _, block in ipairs(blocks) do
+					local slot = getHotbarSlotForBlock(block.tool)
+					if slot then
+						if block.health < weakestHealth then
+							weakestHealth = block.health
+							weakestInHotbar = block
+						end
+					end
+				end
+				
+				if weakestInHotbar then
+					return weakestInHotbar.itemType
+				else
+					return blocks[1].itemType
+				end
+			end
+		end
+	end
+	
+	local function findGaps(origin)
+		local gaps = {}
+		
+		local offsets = {
+			Vector3.new(3, 0, 0),
+			Vector3.new(-3, 0, 0),
+			Vector3.new(0, 3, 0),
+			Vector3.new(0, -3, 0),
+			Vector3.new(0, 0, 3),
+			Vector3.new(0, 0, -3),
+			Vector3.new(3, 3, 0),
+			Vector3.new(-3, 3, 0),
+			Vector3.new(0, 3, 3),
+			Vector3.new(0, 3, -3),
+			Vector3.new(0, 6, 0),
+		}
+		
+		for _, offset in ipairs(offsets) do
+			local pos = origin + offset
+			
+			if not hasBlockAt(pos) then
+				table.insert(gaps, pos)
+			end
+		end
+		
+		return gaps
+	end
+	
+	local function hasMovedSignificantly(startPos, currentPos)
+		local distance = (startPos - currentPos).Magnitude
+		return distance > 2
+	end
+	
+	local function executeBlockIn()
+		if placing then return end
+		placing = true
+		
+		buildThread = task.spawn(function()
+			while BlockIn.Enabled and placing do
+				if not entitylib.isAlive then
+					notif('BlockIn', 'Not alive', 2)
+					placing = false
+					BlockIn:Toggle()
+					return
+				end
+				
+				local blockToUse = getScaffoldBlock()
+				
+				if not blockToUse then
+					task.wait(0.1)
+					continue
+				end
+				
+				setCPS(SpeedSlider.Value)
+				
+				local startOrigin = entitylib.character.RootPart.Position
+				
+				local gaps = findGaps(startOrigin)
+				
+				if #gaps == 0 then
+					if AutoSwitch.Enabled and not HandCheck.Enabled then
+						pcall(function()
+							hotbarSwitch(store.inventory.hotbarSlot)
+						end)
+					end
+					
+					setCPS(originalCPS)
+					placing = false
+					
+					task.wait(0.1)
+					if BlockIn.Enabled then
+						BlockIn:Toggle()
+					end
+					return
+				end
+				
+				local originalSlot = store.inventory.hotbarSlot
+				local delay = DelaySlider.Value / 1000
+				
+				local function restoreSlot()
+					if AutoSwitch.Enabled and not HandCheck.Enabled and originalSlot then
+						pcall(function()
+							hotbarSwitch(originalSlot)
+						end)
+					end
+				end
+				
+				if AutoSwitch.Enabled and not HandCheck.Enabled then
+					local blocks = getBlocks()
+					if #blocks > 0 then
+						local targetBlock = nil
+						
+						if StrongestOnly.Enabled then
+							targetBlock = blocks[1]
+						else
+							local weakestInHotbar = nil
+							local weakestHealth = math.huge
+							
+							for _, block in ipairs(blocks) do
+								local slot = getHotbarSlotForBlock(block.tool)
+								if slot then
+									if block.health < weakestHealth then
+										weakestHealth = block.health
+										weakestInHotbar = block
+									end
+								end
+							end
+							
+							targetBlock = weakestInHotbar or blocks[1]
+						end
+						
+						if targetBlock then
+							local slot = getHotbarSlotForBlock(targetBlock.tool)
+							if slot then
+								hotbarSwitch(slot)
+								task.wait(0.05)
+							end
+						end
+					end
+				end
+				
+				for i, pos in ipairs(gaps) do
+					if not BlockIn.Enabled or not placing then 
+						break 
+					end
+					
+					local currentBlock = getScaffoldBlock()
+					if not currentBlock then
+						break
+					end
+					
+					if not entitylib.isAlive then
+						break
+					end
+					
+					local currentPos = entitylib.character.RootPart.Position
+					if hasMovedSignificantly(startOrigin, currentPos) then
 
+					end
+					
+					if not hasBlockAt(pos) then
+						if hasFaceBelowOrSide(pos) then
+							if canPlaceAtPosition(pos) then
+								pcall(bedwars.placeBlock, pos, currentBlock, false)
+							end
+						else
+							local nearestBlock = blockProximity(pos)
+							if nearestBlock and canPlaceAtPosition(nearestBlock) then
+								pcall(bedwars.placeBlock, nearestBlock, currentBlock, false)
+							end
+						end
+					end
+					
+					if i < #gaps then
+						task.wait(delay)
+					end
+				end
+				
+				restoreSlot()
+				task.wait(0.1)
+			end
+			
+			restoreSlot()
+			setCPS(originalCPS)
+			placing = false
+		end)
+	end
+	
+	BlockIn = vape.Categories.Utility:CreateModule({
+		Name = 'BlockIn',
+		Function = function(callback)
+			if callback then
+				initCPS()
+				executeBlockIn()
+			else
+				placing = false
+				if buildThread then
+					pcall(function()
+						task.cancel(buildThread)
+					end)
+					buildThread = nil
+				end
+				setCPS(originalCPS)
+			end
+		end,
+		Tooltip = 'Surrounds you with blocks (real-time gap detection)'
+	})
+	
+	SpeedSlider = BlockIn:CreateSlider({
+		Name = 'Speed',
+		Min = 1,
+		Max = 12,
+		Default = 12,
+		Suffix = ' CPS',
+		Function = function(val)
+			if BlockIn.Enabled then
+				setCPS(val)
+			end
+		end,
+		Tooltip = 'Block placement speed'
+	})
+	
+	DelaySlider = BlockIn:CreateSlider({
+		Name = 'Delay',
+		Min = 0,
+		Max = 200,
+		Default = 50,
+		Suffix = 'ms',
+		Function = function(val)
+		end,
+		Tooltip = 'Delay between blocks'
+	})
+	
+	AutoSwitch = BlockIn:CreateToggle({
+		Name = 'Auto Switch',
+		Default = true,
+		Function = function(val)
+		end,
+		Tooltip = 'Auto switch to blocks'
+	})
+	
+	HandCheck = BlockIn:CreateToggle({
+		Name = 'Hand Check',
+		Default = false,
+		Function = function(val)
+		end,
+		Tooltip = 'Only build when holding block'
+	})
+	
+	StrongestOnly = BlockIn:CreateToggle({
+		Name = 'Strongest Only',
+		Default = false,
+		Function = function(val)
+		end,
+		Tooltip = 'Use strongest block only (obsidian)'
+	})
+end)
 	
 run(function()
 	local ChestSteal
