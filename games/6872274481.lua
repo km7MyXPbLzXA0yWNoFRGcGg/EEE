@@ -21087,7 +21087,6 @@ run(function()
 		Tooltip = 'Only attacks while swinging manually'
 	})
 end)
-
 -- Full KillauraFavorite script with client-side rate limiter for AttackRemote
 -- (Integrated rate limit + server-metric heuristics as requested.)
 
@@ -21301,7 +21300,7 @@ run(function()
 	end
 
 	Killaura = vape.Categories.Blatant:CreateModule({
-		Name = 'Ka<>',
+		Name = 'KillauraFavorite3',
 		Function = function(callback)
 			if callback then
 				if inputService.TouchEnabled then
