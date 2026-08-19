@@ -20639,10 +20639,6 @@ run(function()
 	Killaura = vape.Categories.Blatant:CreateModule({
 		Name = 'KillauraFavorite',
 		Function = function(callback)
-			-- Entity scans stay responsive; only remote dispatch is paced.  This
-			-- permits at most 231 attack events in a 60-second interval.
-			local ATTACK_INTERVAL = 0.26
-			local nextAttackRemote = 0
 			if callback then
 				if inputService.TouchEnabled then
 					pcall(function()
@@ -20770,7 +20766,6 @@ run(function()
 								end
 
 								if delta.Magnitude > AttackRange.Value then continue end
-								if tick() < nextAttackRemote then continue end
 
 								local actualRoot = v.Character.PrimaryPart
 								if actualRoot then
@@ -20793,7 +20788,6 @@ run(function()
 											selfPosition = {value = pos}
 										}
 									})
-									nextAttackRemote = tick() + ATTACK_INTERVAL
 								end
 							end
 						end
@@ -21093,4 +21087,3 @@ run(function()
 		Tooltip = 'Only attacks while swinging manually'
 	})
 end)
-					
