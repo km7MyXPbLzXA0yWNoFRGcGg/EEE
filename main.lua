@@ -51,7 +51,7 @@ local function finishLoading()
 	task.spawn(function()
 		repeat
 			vape:Save()
-			task.wait(10)
+			task.wait(20) -- OPTIMIZED: increased from 10 to 20 seconds to reduce save frequency
 		until not vape.Loaded
 	end)
 
