@@ -18,10 +18,10 @@ local CONFIG = {
 	HTTP_REQUEST_DEBOUNCE = 0.5, -- seconds
 	LOOP_THROTTLE_INTERVAL = 0.016, -- ~60 FPS
 	MEMORY_CHECK_INTERVAL = 15, -- seconds
-	MAX_PENDING_REQUESTS = 3,
+	MAX_PENDING_REQUESTS = 2, -- REDUCED from 3 to 2
 	RENDER_THROTTLE = 0.016, -- throttle excessive renders
 	MAX_FRAME_TIME = 0.05, -- cap frame time at 50ms
-	GC_COLLECTION_INTERVAL = 120,
+	GC_COLLECTION_INTERVAL = 180, -- INCREASED from 120 to 180 seconds
 	INCREMENTAL_GC = true, -- use incremental garbage collection
 }
 
@@ -40,7 +40,7 @@ shared.R12SAStandaloneAntilagState = state
 -- Cache for repeated file operations
 local fileCache = {}
 local fileCacheCount = 0
-local fileCacheMaxSize = 50
+local fileCacheMaxSize = 100 -- INCREASED from 50 to 100
 
 local function setCacheEntry(key, data)
 	if fileCache[key] == nil then
@@ -279,7 +279,7 @@ end
 
 function antilag.PrintStatus()
 	local status = antilag.GetStatus()
-	print('[ANTILAG] FPS: ' .. math.floor(status.fps) .. ' | Frame Time: ' .. math.floor(status.frameTime * 1000) .. 'ms | Pending Requests: ' .. status.pendingRequests .. ' | Cached Files: ' .. status.cachedFiles .. ' | Render Frames: ' .. status.renderFrameCount)
+	print('[ANTILAG] FPS: ' .. math.floor(status.fps) .. ' | Frame Time: ' .. math.floor(status.frameTime * 1000) .. 'ms | Pending Requests: ' .. status.pendingRequests .. ' | Cached Files: ' .. sta[...]
 end
 
 --[[ ===== CLEANUP ===== ]]
