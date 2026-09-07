@@ -22026,7 +22026,16 @@ run(function()
 	})
 end)
 
-local Attacking = false
+Attacking = false
+
+if AnimTween then
+    AnimTween:Cancel()
+    AnimTween = nil
+end
+
+if armC0 then
+    gameCamera.Viewmodel.RightHand.RightWrist.C0 = armC0
+end
  
 run(function()
     local LGKillaura, Targets, Sort, Range, UpdateRate, AngleSlider, MaxTargets
