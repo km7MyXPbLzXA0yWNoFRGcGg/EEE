@@ -413,6 +413,27 @@ local function modifyVelocity(v)
 	end
 end
 
+local function getScaffoldBlockForModule(limitItem)
+	if limitItem.Enabled then
+		if store.hand.toolType == 'block' then
+			return store.hand.tool.Name
+		end
+		return nil
+	else
+		local wool = getWool()
+		if wool then
+			return wool
+		else
+			for _, item in store.inventory.inventory.items do
+				if bedwars.ItemMeta[item.itemType].block then
+					return item.itemType
+				end
+			end
+		end
+	end
+	return nil
+end
+
 local function updateVelocity(force)
 	local newState = getTableSize(frictionTable) > 0
 	if frictionState ~= newState or force then
