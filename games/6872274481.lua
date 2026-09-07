@@ -22026,32 +22026,14 @@ run(function()
 	})
 end)
 
-Attacking = false
-
-if AnimTween then
-    AnimTween:Cancel()
-    AnimTween = nil
-end
-
-if animationHooksInstalled and swordEffectFunction then
-    pcall(debug.setupvalue, swordEffectFunction, 6, swordEffectController)
-end
-
-if animationHooksInstalled and scytheAnimationFunction then
-    pcall(debug.setupvalue, scytheAnimationFunction, 3, scytheAnimationController)
-end
-
-animationHooksInstalled = false
-
-if armC0 then
-    gameCamera.Viewmodel.RightHand.RightWrist.C0 = armC0
-end
- 
 run(function()
     local LGKillaura, Targets, Sort, Range, UpdateRate, AngleSlider, MaxTargets
     local Mouse, Swing, GUI, BoxColor, ParticleTexture, ParticleColor1, ParticleColor2
     local ParticleSize, Face, Animation, AnimationMode, AnimationSpeed, AnimationTween
     local Limit, LegitAura, Sync
+    local swordEffectFunction, swordEffectController
+    local scytheAnimationFunction, scytheAnimationController
+    local animationHooksInstalled = false
     local Particles, Boxes = {}, {}
     local anims, AnimDelay, AnimTween, armC0 = vape.Libraries.auraanims, tick()
     local AttackRemote = {FireServer = function() end}
@@ -22161,30 +22143,23 @@ run(function()
                                 isVisible = function()
                                     return not Attacking
                                 end,
-                             playAnimation = function(...)
-    local args = {...}
-
-    print("playAnimation called")
-    for i, value in ipairs(args) do
-        print(i, value, typeof(value))
-    end
-
-    if not Attacking then
-        local animation = args[2]
-
-        if animation == nil then
-            warn("Animation argument is nil")
-            return
-        end
-
-        bedwars.ViewmodelController:playAnimation(animation)
-    end
-end
+                                playAnimation = function(...)
+                                    if not Attacking then
+                                        bedwars.ViewmodelController:playAnimation(select(2, ...))
+                                    end
+                                end
                             }
                         }
                     }
-                    debug.setupvalue(bedwars.SwordController.playSwordEffect, 6, fake)
-                    debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, fake)
+                    swordEffectFunction = oldSwing or bedwars.SwordController.playSwordEffect
+                    scytheAnimationFunction = bedwars.ScytheController.playLocalAnimation
+                    local _, currentSwordEffectController = debug.getupvalue(swordEffectFunction, 6)
+                    local _, currentScytheAnimationController = debug.getupvalue(scytheAnimationFunction, 3)
+                    swordEffectController = currentSwordEffectController
+                    scytheAnimationController = currentScytheAnimationController
+                    debug.setupvalue(swordEffectFunction, 6, fake)
+                    debug.setupvalue(scytheAnimationFunction, 3, fake)
+                    animationHooksInstalled = true
  
                     task.spawn(function()
                         local started = false
@@ -22291,8 +22266,19 @@ end
                         lplr.PlayerGui.MobileUI['2'].Visible = true
                     end)
                 end
-                debug.setupvalue(bedwars.SwordController.playSwordEffect, 6, bedwars.Knit)
-                debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, bedwars.Knit)
+                if AnimTween then
+                    AnimTween:Cancel()
+                    AnimTween = nil
+                end
+                if animationHooksInstalled and swordEffectFunction then
+                    pcall(debug.setupvalue, swordEffectFunction, 6, swordEffectController)
+                end
+                if animationHooksInstalled and scytheAnimationFunction then
+                    pcall(debug.setupvalue, scytheAnimationFunction, 3, scytheAnimationController)
+                end
+                swordEffectFunction, swordEffectController = nil, nil
+                scytheAnimationFunction, scytheAnimationController = nil, nil
+                animationHooksInstalled = false
                 Attacking = false
                 if armC0 then
                     AnimTween = tweenService:Create(gameCamera.Viewmodel.RightHand.RightWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
