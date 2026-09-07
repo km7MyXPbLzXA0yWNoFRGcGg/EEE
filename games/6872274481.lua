@@ -22072,7 +22072,7 @@ run(function()
  
         for i = 1, 5 do
             AttackRemote:FireServer(attackData)
-            task.wait(0.01)
+            task.wait(0.1)
         end
     end
  
