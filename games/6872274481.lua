@@ -22033,6 +22033,16 @@ if AnimTween then
     AnimTween = nil
 end
 
+if animationHooksInstalled and swordEffectFunction then
+    pcall(debug.setupvalue, swordEffectFunction, 6, swordEffectController)
+end
+
+if animationHooksInstalled and scytheAnimationFunction then
+    pcall(debug.setupvalue, scytheAnimationFunction, 3, scytheAnimationController)
+end
+
+animationHooksInstalled = false
+
 if armC0 then
     gameCamera.Viewmodel.RightHand.RightWrist.C0 = armC0
 end
