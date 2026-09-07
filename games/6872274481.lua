@@ -14889,58 +14889,13 @@ end)
 run(function()
     local AutoBuildUp
     local LimitItem
-    local faces = {
-        Vector3.new(3, 0, 0),
-        Vector3.new(-3, 0, 0),
-        Vector3.new(0, 3, 0),
-        Vector3.new(0, -3, 0),
-        Vector3.new(0, 0, 3),
-        Vector3.new(0, 0, -3)
-    }
-
-    local function getScaffoldBlock()
-        if LimitItem and LimitItem.Enabled then
-            return store.hand and store.hand.toolType == 'block' and store.hand.tool.Name or nil
-        end
-
-        local bestBlock, bestHealth = nil, -math.huge
-        local inventory = store.inventory and store.inventory.inventory
-        for _, item in pairs(inventory and inventory.items or {}) do
-            local meta = item and bedwars.ItemMeta[item.itemType]
-            if meta and meta.block and (item.amount or 0) > 0 then
-                local health = meta.block.health or 0
-                if health > bestHealth then
-                    bestBlock, bestHealth = item.itemType, health
-                end
-            end
-        end
-        return bestBlock
-    end
-
-    local function hasFaceAdjacent(blockpos)
-        for _, face in ipairs(faces) do
-            if getPlacedBlock(blockpos + face) then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function findNearestBlock(pos)
-        local nearest, distance = nil, math.huge
-        local minPos = bedwars.BlockController:getBlockPosition(pos - Vector3.new(21, 21, 21))
-        local maxPos = bedwars.BlockController:getBlockPosition(pos + Vector3.new(21, 21, 21))
-        for _, block in ipairs(getBlocksInPoints(minPos, maxPos)) do
-            local newDistance = (pos - block).Magnitude
-            if newDistance < distance then
-                nearest, distance = block, newDistance
-            end
-        end
-        return nearest
-    end
     
+    local function getScaffoldBlock()
+        return getScaffoldBlockForModule(LimitItem)
+    end
+
     local function canPlaceAtPosition(blockpos)
-        if not hasFaceAdjacent(blockpos) then
+        if not checkFaceAdjacent(blockpos) then
             return false
         end
         
@@ -14955,7 +14910,7 @@ run(function()
             checkBelow = checkBelow - Vector3.new(0, 3, 0)
         end
         
-        return hasSupport
+        return hasSupport or hasFaceBelowOrSide(blockpos)
     end
     
     AutoBuildUp = vape.Categories.World:CreateModule({
@@ -14977,12 +14932,12 @@ run(function()
                                 if not block then
                                     blockpos = blockpos * 3
                                     
-                                    if hasFaceAdjacent(blockpos) then
+                                    if hasFaceBelowOrSide(blockpos) then
                                         if canPlaceAtPosition(blockpos) then
                                             task.spawn(bedwars.placeBlock, blockpos, wool, false)
                                         end
                                     else
-                                        local nearestBlock = findNearestBlock(currentpos)
+                                        local nearestBlock = blockProximity(currentpos)
                                         if nearestBlock and canPlaceAtPosition(nearestBlock) then
                                             task.spawn(bedwars.placeBlock, nearestBlock, wool, false)
                                         end
