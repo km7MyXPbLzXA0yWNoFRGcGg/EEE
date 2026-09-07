@@ -22070,9 +22070,9 @@ run(function()
         store.attackReach = delta.Magnitude
         store.attackReachUpdate = tick() + 1
  
-        for i = 1, 2 do
+        for i = 1, 1 do
             AttackRemote:FireServer(attackData)
-            task.wait(0.1)
+            task.wait(0.3)
         end
     end
  
