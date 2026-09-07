@@ -22161,12 +22161,23 @@ run(function()
                                 isVisible = function()
                                     return not Attacking
                                 end,
-                              playAnimation = function(...)
+                             playAnimation = function(...)
+    local args = {...}
+
+    print("playAnimation called")
+    for i, value in ipairs(args) do
+        print(i, value, typeof(value))
+    end
+
     if not Attacking then
-        local animation = select(2, ...)
-        if animation ~= nil then
-            bedwars.ViewmodelController:playAnimation(animation)
+        local animation = args[2]
+
+        if animation == nil then
+            warn("Animation argument is nil")
+            return
         end
+
+        bedwars.ViewmodelController:playAnimation(animation)
     end
 end
                             }
