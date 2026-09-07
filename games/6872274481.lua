@@ -22151,11 +22151,14 @@ run(function()
                                 isVisible = function()
                                     return not Attacking
                                 end,
-                                playAnimation = function(...)
-                                    if not Attacking then
-                                        bedwars.ViewmodelController:playAnimation(select(2, ...))
-                                    end
-                                end
+                              playAnimation = function(...)
+    if not Attacking then
+        local animation = select(2, ...)
+        if animation ~= nil then
+            bedwars.ViewmodelController:playAnimation(animation)
+        end
+    end
+end
                             }
                         }
                     }
