@@ -2845,8 +2845,24 @@ run(function()
 	local scytheAnimationFunction, scytheAnimationController
 	local animationHooksInstalled = false
 	local AttackRemote = {FireServer = function() end}
+	local nextRemoteRefresh = 0
+	local function getAttackRemote()
+		-- The game's remote can be replaced after a respawn or a controller reload.
+		-- Keep the last known-good instance, but refresh it periodically so one stale
+		-- reference cannot make the aura appear to stop.
+		if tick() >= nextRemoteRefresh then
+			nextRemoteRefresh = tick() + 2
+			local ok, remote = pcall(function()
+				return bedwars.Client:Get(remotes.AttackEntity).instance
+			end)
+			if ok and remote then
+				AttackRemote = remote
+			end
+		end
+		return AttackRemote
+	end
 	task.spawn(function()
-		AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+		getAttackRemote()
 	end)
 
 	local function getAttackData()
@@ -2865,7 +2881,7 @@ run(function()
 		if not meta or not meta.sword then return false end
 
 		if Limit.Enabled then
-			if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
+			if not store.hand or store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
 		end
 
 		if LegitAura.Enabled then
@@ -2974,7 +2990,10 @@ run(function()
 							if #plrs > 0 then
 								switchItem(sword.tool, 0)
 								local selfpos = root.Position
-								local localfacing = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+								local flatFacing = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+								-- Looking up/down shortens the projected look vector.  Normalizing it
+								-- avoids falsely failing the angle check and dropping nearby targets.
+								local localfacing = flatFacing.Magnitude > 0 and flatFacing.Unit or nil
 
 								for _, v in plrs do
 									if not Killaura.Enabled then break end
@@ -2982,7 +3001,7 @@ run(function()
 									local delta = (v.RootPart.Position - selfpos)
 									local flatDelta = delta * Vector3.new(1, 0, 1)
 									if flatDelta.Magnitude <= 0 then continue end
-									local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
+									local angle = localfacing and math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1)) or 0
 									if angle > (math.rad(AngleSlider.Value) / 2) then continue end
 
 									table.insert(attacked, {
@@ -3009,7 +3028,7 @@ run(function()
 
 									if delta.Magnitude > AttackRange.Value then continue end
 
-									local actualRoot = v.Character and v.Character.PrimaryPart
+									local actualRoot = (v.Character and v.Character.PrimaryPart) or v.RootPart
 									local now = tick()
 									if actualRoot and now >= nextAttack then
 										local attackInterval = math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
@@ -3020,7 +3039,8 @@ run(function()
 										store.attackReach = (delta.Magnitude * 100) // 1 / 100
 										store.attackReachUpdate = tick() + 1
 
-										AttackRemote:FireServer({
+										local remote = getAttackRemote()
+										remote:FireServer({
 											weapon = sword.tool,
 											chargedAttack = {chargeRatio = 0},
 											entityInstance = v.Character,
