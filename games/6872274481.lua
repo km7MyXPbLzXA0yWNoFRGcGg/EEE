@@ -2844,7 +2844,6 @@ run(function()
 	local swordEffectFunction, swordEffectController
 	local scytheAnimationFunction, scytheAnimationController
 	local animationHooksInstalled = false
-	local ATTACKS_PER_TEN_SECONDS = 36
 	local AttackRemote = {FireServer = function() end}
 	local nextRemoteRefresh = 0
 	local function getAttackRemote()
@@ -3015,7 +3014,7 @@ run(function()
 										Attacking = true
 										store.KillauraTarget = v
 										if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
-										AnimDelay = tick() + 10 / ATTACKS_PER_TEN_SECONDS
+											AnimDelay = tick() + math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
 											bedwars.SwordController:playSwordEffect(meta, false)
 											if meta.displayName:find(' Scythe') then
 												bedwars.ScytheController:playLocalAnimation()
@@ -3032,14 +3031,8 @@ run(function()
 									local actualRoot = (v.Character and v.Character.PrimaryPart) or v.RootPart
 									local now = tick()
 									if actualRoot and now >= nextAttack then
-										local attackInterval = 10 / ATTACKS_PER_TEN_SECONDS
-										-- Advance from the prior deadline, rather than this (possibly late)
-										-- frame.  Resetting from `now` on every send accumulates scheduler
-										-- jitter and turns a 36-attempt cadence into roughly 33-34 sends.
-										nextAttack += attackInterval
-										if nextAttack < now then
-											nextAttack = now
-										end
+										local attackInterval = math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
+										nextAttack = now + attackInterval
 										local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 										local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 										bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
@@ -3175,9 +3168,9 @@ run(function()
 	})
 	AttackRate = Killaura:CreateSlider({
 		Name = 'Attack attempts per 10s',
-		Min = 36,
-		Max = 36,
-		Default = 36,
+		Min = 1,
+		Max = 34,
+		Default = 34,
 		Suffix = ' hits'
 	})
 	MaxTargets = Killaura:CreateSlider({
