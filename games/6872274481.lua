@@ -2995,7 +2995,7 @@ run(function()
 										Attacking = true
 										store.KillauraTarget = v
 										if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
-											AnimDelay = tick() + (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0.11)
+											AnimDelay = tick() + math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
 											bedwars.SwordController:playSwordEffect(meta, false)
 											if meta.displayName:find(' Scythe') then
 												bedwars.ScytheController:playLocalAnimation()
@@ -3010,13 +3010,10 @@ run(function()
 									if delta.Magnitude > AttackRange.Value then continue end
 
 									local actualRoot = v.Character and v.Character.PrimaryPart
-									if actualRoot and tick() >= nextAttack then
-										local attackInterval = 10 / AttackRate.Value
-										nextAttack += attackInterval
-										-- Do not burst after a period with no valid target.
-										if nextAttack <= tick() then
-											nextAttack = tick() + attackInterval
-										end
+									local now = tick()
+									if actualRoot and now >= nextAttack then
+										local attackInterval = math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
+										nextAttack = now + attackInterval
 										local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 										local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 										bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
