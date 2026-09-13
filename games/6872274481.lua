@@ -2844,6 +2844,7 @@ run(function()
 	local swordEffectFunction, swordEffectController
 	local scytheAnimationFunction, scytheAnimationController
 	local animationHooksInstalled = false
+	local ATTACKS_PER_TEN_SECONDS = 36
 	local AttackRemote = {FireServer = function() end}
 	local nextRemoteRefresh = 0
 	local function getAttackRemote()
@@ -3014,7 +3015,7 @@ run(function()
 										Attacking = true
 										store.KillauraTarget = v
 										if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
-											AnimDelay = tick() + math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
+										AnimDelay = tick() + 10 / ATTACKS_PER_TEN_SECONDS
 											bedwars.SwordController:playSwordEffect(meta, false)
 											if meta.displayName:find(' Scythe') then
 												bedwars.ScytheController:playLocalAnimation()
@@ -3031,28 +3032,33 @@ run(function()
 									local actualRoot = (v.Character and v.Character.PrimaryPart) or v.RootPart
 									local now = tick()
 									if actualRoot and now >= nextAttack then
-										local attackInterval = math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
-										nextAttack = now + attackInterval
+										local attackInterval = 10 / ATTACKS_PER_TEN_SECONDS
 										local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 										local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
-										bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
-										store.attackReach = (delta.Magnitude * 100) // 1 / 100
-										store.attackReachUpdate = tick() + 1
-
 										local remote = getAttackRemote()
-										remote:FireServer({
-											weapon = sword.tool,
-											chargedAttack = {chargeRatio = 0},
-											entityInstance = v.Character,
-											validate = {
-												raycast = {
-													cameraPosition = {value = pos},
-													cursorDirection = {value = dir}
-												},
-												targetPosition = {value = actualRoot.Position},
-												selfPosition = {value = pos}
-											}
-										})
+										local sent = pcall(function()
+											remote:FireServer({
+												weapon = sword.tool,
+												chargedAttack = {chargeRatio = 0},
+												entityInstance = v.Character,
+												validate = {
+													raycast = {
+														cameraPosition = {value = pos},
+														cursorDirection = {value = dir}
+													},
+													targetPosition = {value = actualRoot.Position},
+													selfPosition = {value = pos}
+												}
+											})
+										end)
+										-- A failed remote call should be retried on the next scan instead of
+										-- consuming a cooldown interval and producing a visible pause.
+										if sent then
+											nextAttack = now + attackInterval
+											bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+											store.attackReach = (delta.Magnitude * 100) // 1 / 100
+											store.attackReachUpdate = tick() + 1
+										end
 									end
 								end
 							end
@@ -3168,9 +3174,9 @@ run(function()
 	})
 	AttackRate = Killaura:CreateSlider({
 		Name = 'Attack attempts per 10s',
-		Min = 1,
-		Max = 34,
-		Default = 34,
+		Min = 36,
+		Max = 36,
+		Default = 36,
 		Suffix = ' hits'
 	})
 	MaxTargets = Killaura:CreateSlider({
