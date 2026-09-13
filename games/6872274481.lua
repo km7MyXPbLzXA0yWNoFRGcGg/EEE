@@ -1483,7 +1483,9 @@ run(function()
 						if ent then
 							local delta = (ent.RootPart.Position - entitylib.character.RootPart.Position)
 							local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
-							local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+							local flatDelta = delta * Vector3.new(1, 0, 1)
+							if flatDelta.Magnitude <= 0 then return end
+							local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
 							if angle >= (math.rad(AngleSlider.Value) / 2) then return end
 							targetinfo.Targets[ent] = tick() + 1
 							gameCamera.CFrame = gameCamera.CFrame:Lerp(CFrame.lookAt(gameCamera.CFrame.p, ent.RootPart.Position), (AimSpeed.Value + (StrafeIncrease.Enabled and (inputService:IsKeyDown(Enum.KeyCode.A) or inputService:IsKeyDown(Enum.KeyCode.D)) and 10 or 0)) * dt)
@@ -2055,7 +2057,9 @@ end)
 								if MaxAngle and MaxAngle.Value < 360 then
 									local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
 									local delta = (ent.RootPart.Position - selfpos)
-									local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+									local flatDelta = delta * Vector3.new(1, 0, 1)
+								if flatDelta.Magnitude <= 0 then continue end
+								local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
 									if angle > (math.rad(MaxAngle.Value) / 2) then continue end
 								end
 								
@@ -2858,6 +2862,8 @@ run(function()
 		if not sword or not sword.tool then return false end
 
 		local meta = bedwars.ItemMeta[sword.tool.Name]
+		if not meta or not meta.sword then return false end
+
 		if Limit.Enabled then
 			if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
 		end
@@ -2970,7 +2976,9 @@ run(function()
 							for _, v in plrs do
 								if not Killaura.Enabled then break end
 								local delta = (v.RootPart.Position - selfpos)
-								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+								local flatDelta = delta * Vector3.new(1, 0, 1)
+								if flatDelta.Magnitude <= 0 then continue end
+								local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
 								if angle > (math.rad(AngleSlider.Value) / 2) then continue end
 
 								table.insert(attacked, {
@@ -2997,7 +3005,7 @@ run(function()
 
 								if delta.Magnitude > AttackRange.Value then continue end
 
-								local actualRoot = v.Character.PrimaryPart
+								local actualRoot = v.Character and v.Character.PrimaryPart
 								if actualRoot and tick() >= nextAttack then
 									local attackInterval = 10 / AttackRate.Value
 									nextAttack += attackInterval
@@ -3385,6 +3393,8 @@ run(function()
 		if not sword or not sword.tool then return false end
 
 		local meta = bedwars.ItemMeta[sword.tool.Name]
+		if not meta or not meta.sword then return false end
+
 		if Limit.Enabled then
 			if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
 		end
@@ -3400,6 +3410,7 @@ run(function()
 		Name = 'KillauraOLD',
 		Function = function(callback)
 			if callback then
+				local nextServerAttack = 0
 				if inputService.TouchEnabled then
 					pcall(function()
 						lplr.PlayerGui.MobileUI['2'].Visible = Limit.Enabled
@@ -3494,7 +3505,9 @@ run(function()
 							for _, v in plrs do
 								if not Killaura.Enabled then break end
 								local delta = (v.RootPart.Position - selfpos)
-								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+								local flatDelta = delta * Vector3.new(1, 0, 1)
+								if flatDelta.Magnitude <= 0 then continue end
+								local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
 								if angle > (math.rad(AngleSlider.Value) / 2) then continue end
 
 								table.insert(attacked, {
@@ -3527,8 +3540,11 @@ run(function()
 
 								if delta.Magnitude > AttackRange.Value then continue end
 
-								local actualRoot = v.Character.PrimaryPart
-								if actualRoot then
+								local actualRoot = v.Character and v.Character.PrimaryPart
+								local now = tick()
+								local attackCooldown = math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / 34)
+								if actualRoot and now >= nextServerAttack then
+									nextServerAttack = now + attackCooldown
 									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 									local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 									bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
@@ -3571,7 +3587,7 @@ run(function()
 						entitylib.character.RootPart.CFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(vec.X, entitylib.character.RootPart.Position.Y + 0.001, vec.Z))
 					end
 
-					task.wait(#attacked > 0 and #attacked * 0.02 or 1 / UpdateRate.Value)
+					task.wait(1 / math.clamp(UpdateRate.Value, 1, 120))
 				until not Killaura.Enabled
 			else
 				-- Stop the running attack/animation tasks before restoring normal input.
@@ -3898,6 +3914,8 @@ run(function()
 		if not sword or not sword.tool then return false end
 
 		local meta = bedwars.ItemMeta[sword.tool.Name]
+		if not meta or not meta.sword then return false end
+
 		if Limit.Enabled then
 			if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
 		end
@@ -4008,7 +4026,9 @@ run(function()
 							for _, v in plrs do
 								if not Killaura.Enabled then break end
 								local delta = (v.RootPart.Position - selfpos)
-								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+								local flatDelta = delta * Vector3.new(1, 0, 1)
+								if flatDelta.Magnitude <= 0 then continue end
+								local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
 								if angle > (math.rad(AngleSlider.Value) / 2) then continue end
 
 								table.insert(attacked, {
@@ -4041,7 +4061,7 @@ run(function()
 
 								if delta.Magnitude > AttackRange.Value then continue end
 
-								local actualRoot = v.Character.PrimaryPart
+								local actualRoot = v.Character and v.Character.PrimaryPart
 								local now = tick()
 								local attackCooldown = math.max(
 									tonumber(meta.sword.attackSpeed) or 0,
@@ -4091,7 +4111,7 @@ run(function()
 						entitylib.character.RootPart.CFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(vec.X, entitylib.character.RootPart.Position.Y + 0.001, vec.Z))
 					end
 
-					task.wait(#attacked > 0 and #attacked * 0.02 or 1 / UpdateRate.Value)
+					task.wait(1 / math.clamp(UpdateRate.Value, 1, 120))
 				until not Killaura.Enabled
 			else
 				-- Stop the running attack/animation tasks before restoring normal input.
@@ -4712,6 +4732,8 @@ run(function()
 		if not sword or not sword.tool then return false end
 
 		local meta = bedwars.ItemMeta[sword.tool.Name]
+		if not meta or not meta.sword then return false end
+
 		if Limit.Enabled then
 			if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
 		end
@@ -4825,7 +4847,9 @@ run(function()
 							for _, v in plrs do
 								if not Killaura.Enabled then break end
 								local delta = (v.RootPart.Position - selfpos)
-								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+								local flatDelta = delta * Vector3.new(1, 0, 1)
+								if flatDelta.Magnitude <= 0 then continue end
+								local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
 								if angle > (math.rad(AngleSlider.Value) / 2) then continue end
 
 								table.insert(attacked, {
@@ -4858,7 +4882,7 @@ run(function()
 
 								if delta.Magnitude > AttackRange.Value then continue end
 
-								local actualRoot = v.Character.PrimaryPart
+								local actualRoot = v.Character and v.Character.PrimaryPart
 								local now = tick()
 								if actualRoot and now >= nextAttackRequest then
 									local requestInterval = math.max(
@@ -18648,7 +18672,9 @@ run(function()
 
             local delta = (bed.Position - playerPos)
             local localfacing = (lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart") and lplr.Character.HumanoidRootPart.CFrame.LookVector * Vector3.new(1, 0, 1)) or Vector3.new(1, 0, 0)
-            local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+            local flatDelta = delta * Vector3.new(1, 0, 1)
+								if flatDelta.Magnitude <= 0 then continue end
+								local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
 
             if angle <= math.rad(bedassistangle.Value) / 2 then
                 if bedassistlowestblock.Enabled then
@@ -21551,6 +21577,8 @@ run(function()
 		if not sword or not sword.tool then return false end
 
 		local meta = bedwars.ItemMeta[sword.tool.Name]
+		if not meta or not meta.sword then return false end
+
 		if Limit.Enabled then
 			if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
 		end
@@ -21566,6 +21594,7 @@ run(function()
 		Name = 'KillauraFavorite',
 		Function = function(callback)
 			if callback then
+				local nextServerAttack = 0
 				if inputService.TouchEnabled then
 					pcall(function()
 						lplr.PlayerGui.MobileUI['2'].Visible = Limit.Enabled
@@ -21660,7 +21689,9 @@ run(function()
 							for _, v in plrs do
 								if not Killaura.Enabled then break end
 								local delta = (v.RootPart.Position - selfpos)
-								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+								local flatDelta = delta * Vector3.new(1, 0, 1)
+								if flatDelta.Magnitude <= 0 then continue end
+								local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
 								if angle > (math.rad(AngleSlider.Value) / 2) then continue end
 
 								table.insert(attacked, {
@@ -21693,8 +21724,11 @@ run(function()
 
 								if delta.Magnitude > AttackRange.Value then continue end
 
-								local actualRoot = v.Character.PrimaryPart
-								if actualRoot then
+								local actualRoot = v.Character and v.Character.PrimaryPart
+								local now = tick()
+								local attackCooldown = math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / 34)
+								if actualRoot and now >= nextServerAttack then
+									nextServerAttack = now + attackCooldown
 									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 									local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 									bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
@@ -21737,7 +21771,7 @@ run(function()
 						entitylib.character.RootPart.CFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(vec.X, entitylib.character.RootPart.Position.Y + 0.001, vec.Z))
 					end
 
-					task.wait(#attacked > 0 and #attacked * 0.02 or 1 / UpdateRate.Value)
+					task.wait(1 / math.clamp(UpdateRate.Value, 1, 120))
 				until not Killaura.Enabled
 			else
 				-- Stop the running attack/animation tasks before restoring normal input.
@@ -22236,7 +22270,9 @@ run(function()
                             for _, v in plrs do
                                 local delta = (v.RootPart.Position - selfpos)
                                 if delta.Magnitude <= calculateRange(Range.Value) then
-                                    local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+                                    local flatDelta = delta * Vector3.new(1, 0, 1)
+								if flatDelta.Magnitude <= 0 then continue end
+								local angle = math.acos(math.clamp(localfacing:Dot(flatDelta.Unit), -1, 1))
                                     if angle <= (math.rad(AngleSlider.Value) / 2) then
                                         table.insert(attacked, v)
                                         targetinfo.Targets[v] = tick() + 1
