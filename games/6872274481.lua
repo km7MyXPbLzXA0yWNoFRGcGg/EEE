@@ -2844,7 +2844,7 @@ run(function()
 	local swordEffectFunction, swordEffectController
 	local scytheAnimationFunction, scytheAnimationController
 	local animationHooksInstalled = false
-	local ATTACKS_PER_TEN_SECONDS = 36
+	local ATTACKS_PER_TEN_SECONDS = 35
 	local AttackRemote = {FireServer = function() end}
 	local nextRemoteRefresh = 0
 	local function getAttackRemote()
@@ -3033,32 +3033,27 @@ run(function()
 									local now = tick()
 									if actualRoot and now >= nextAttack then
 										local attackInterval = 10 / ATTACKS_PER_TEN_SECONDS
+										nextAttack = now + attackInterval
 										local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 										local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
+										bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+										store.attackReach = (delta.Magnitude * 100) // 1 / 100
+										store.attackReachUpdate = tick() + 1
+
 										local remote = getAttackRemote()
-										local sent = pcall(function()
-											remote:FireServer({
-												weapon = sword.tool,
-												chargedAttack = {chargeRatio = 0},
-												entityInstance = v.Character,
-												validate = {
-													raycast = {
-														cameraPosition = {value = pos},
-														cursorDirection = {value = dir}
-													},
-													targetPosition = {value = actualRoot.Position},
-													selfPosition = {value = pos}
-												}
-											})
-										end)
-										-- A failed remote call should be retried on the next scan instead of
-										-- consuming a cooldown interval and producing a visible pause.
-										if sent then
-											nextAttack = now + attackInterval
-											bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
-											store.attackReach = (delta.Magnitude * 100) // 1 / 100
-											store.attackReachUpdate = tick() + 1
-										end
+										remote:FireServer({
+											weapon = sword.tool,
+											chargedAttack = {chargeRatio = 0},
+											entityInstance = v.Character,
+											validate = {
+												raycast = {
+													cameraPosition = {value = pos},
+													cursorDirection = {value = dir}
+												},
+												targetPosition = {value = actualRoot.Position},
+												selfPosition = {value = pos}
+											}
+										})
 									end
 								end
 							end
@@ -3174,9 +3169,9 @@ run(function()
 	})
 	AttackRate = Killaura:CreateSlider({
 		Name = 'Attack attempts per 10s',
-		Min = 36,
-		Max = 36,
-		Default = 36,
+		Min = 35,
+		Max = 35,
+		Default = 35,
 		Suffix = ' hits'
 	})
 	MaxTargets = Killaura:CreateSlider({
