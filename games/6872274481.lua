@@ -2844,6 +2844,7 @@ run(function()
 	local swordEffectFunction, swordEffectController
 	local scytheAnimationFunction, scytheAnimationController
 	local animationHooksInstalled = false
+	local ATTACKS_PER_TEN_SECONDS = 35
 	local AttackRemote = {FireServer = function() end}
 	local nextRemoteRefresh = 0
 	local function getAttackRemote()
@@ -3014,7 +3015,7 @@ run(function()
 										Attacking = true
 										store.KillauraTarget = v
 										if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
-											AnimDelay = tick() + math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
+										AnimDelay = tick() + 10 / ATTACKS_PER_TEN_SECONDS
 											bedwars.SwordController:playSwordEffect(meta, false)
 											if meta.displayName:find(' Scythe') then
 												bedwars.ScytheController:playLocalAnimation()
@@ -3031,7 +3032,7 @@ run(function()
 									local actualRoot = (v.Character and v.Character.PrimaryPart) or v.RootPart
 									local now = tick()
 									if actualRoot and now >= nextAttack then
-										local attackInterval = math.max(tonumber(meta.sword.attackSpeed) or 0, 10 / AttackRate.Value)
+										local attackInterval = 10 / ATTACKS_PER_TEN_SECONDS
 										nextAttack = now + attackInterval
 										local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 										local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
@@ -3168,9 +3169,9 @@ run(function()
 	})
 	AttackRate = Killaura:CreateSlider({
 		Name = 'Attack attempts per 10s',
-		Min = 1,
-		Max = 34,
-		Default = 34,
+		Min = 35,
+		Max = 35,
+		Default = 35,
 		Suffix = ' hits'
 	})
 	MaxTargets = Killaura:CreateSlider({
