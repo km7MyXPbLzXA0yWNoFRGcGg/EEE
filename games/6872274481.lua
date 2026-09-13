@@ -2844,7 +2844,7 @@ run(function()
 	local swordEffectFunction, swordEffectController
 	local scytheAnimationFunction, scytheAnimationController
 	local animationHooksInstalled = false
-	local ATTACKS_PER_TEN_SECONDS = 35
+	local ATTACKS_PER_TEN_SECONDS = 36
 	local AttackRemote = {FireServer = function() end}
 	local nextRemoteRefresh = 0
 	local function getAttackRemote()
@@ -3033,7 +3033,13 @@ run(function()
 									local now = tick()
 									if actualRoot and now >= nextAttack then
 										local attackInterval = 10 / ATTACKS_PER_TEN_SECONDS
-										nextAttack = now + attackInterval
+										-- Advance from the prior deadline, rather than this (possibly late)
+										-- frame.  Resetting from `now` on every send accumulates scheduler
+										-- jitter and turns a 36-attempt cadence into roughly 33-34 sends.
+										nextAttack += attackInterval
+										if nextAttack < now then
+											nextAttack = now
+										end
 										local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
 										local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 										bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
@@ -3169,9 +3175,9 @@ run(function()
 	})
 	AttackRate = Killaura:CreateSlider({
 		Name = 'Attack attempts per 10s',
-		Min = 35,
-		Max = 35,
-		Default = 35,
+		Min = 36,
+		Max = 36,
+		Default = 36,
 		Suffix = ' hits'
 	})
 	MaxTargets = Killaura:CreateSlider({
